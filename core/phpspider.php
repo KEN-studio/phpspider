@@ -11,6 +11,11 @@
 
 //----------------------------------
 // PHPSpider核心类文件
+// ***********
+// 泛域名抓取特别版 BY KEN
+// ***********
+// * 泛域名设置：domain = array('*')
+// * 增加子域名数量限制 $sub_num = 100
 //----------------------------------
 
 namespace phpspider\core;
@@ -38,7 +43,7 @@ class phpspider
      * 版本号
      * @var string
      */
-    const VERSION = '2.1.3';
+    const VERSION = '2.1.3 Modify By KEN';
 
     /**
      * 爬虫爬取每个网页的时间间隔,0表示不延时, 单位: 毫秒
@@ -193,6 +198,26 @@ class phpspider
      * 提取到的字段数
      */
     public static $fields_num = 0;
+
+    /**
+     * 【KEN】提取到的页面数 结构为 domain => number
+     */
+    public static $pages_num = array();
+
+    /**
+     * 【KEN】花费的抓取时长 结构为 domain => number
+     */
+    public static $duration = array();
+
+    /**
+     * 【KEN】单域名最大子域名发现数量 防止掉进蜘蛛池，默认100
+     */
+    public static $sub_num = 100;
+
+    /**
+     * 【KEN】子进程未获取任务，超时退出前，等待计时器
+     */
+    public static $stand_by_time = 0;
 
     /**
      * 采集深度
@@ -350,16 +375,6 @@ class phpspider
         log::$log_file = isset($configs['log_file']) ? $configs['log_file'] : PATH_DATA.'/phpspider.log';
         log::$log_type = isset($configs['log_type']) ? $configs['log_type'] : false;
 
-        // 彩蛋
-        $included_files = get_included_files();
-        $content        = file_get_contents($included_files[0]);
-        if ( ! preg_match("#/\* Do NOT delete this comment \*/#", $content) || ! preg_match("#/\* 不要删除这段注释 \*/#", $content))
-        {
-            $msg = 'Unknown error...';
-            log::error($msg);
-            exit;
-        }
-
         $configs['name']       = isset($configs['name']) ? $configs['name'] : 'phpspider';
         $configs['proxy']      = isset($configs['proxy']) ? $configs['proxy'] : false;
         $configs['user_agent'] = isset($configs['user_agent']) ? $configs['user_agent'] : self::AGENT_PC;
@@ -402,12 +417,11 @@ class phpspider
             self::$serverid = $configs['serverid'];
         }
 
-        // 不同项目的采集以采集名称作为前缀区分
+        // 不同项目的采集以采集名称作为前缀区分 缩短 spider name md5长度到4位，减少内存占用
         if (isset(self::$queue_config['prefix']))
         {
-            self::$queue_config['prefix'] = self::$queue_config['prefix'].'-'.md5($configs['name']);
+            self::$queue_config['prefix'] = self::$queue_config['prefix'].'-'.substr(md5($configs['name']), 0, 4);
         }
-
         self::$configs = $configs;
     }
 
@@ -420,6 +434,18 @@ class phpspider
     {
         // 投递状态
         $status = false;
+        //限制最大子域名数量
+        if ( ! empty(self::$sub_num))
+        {
+            //抓取到的子域名超过指定数量，就丢掉此域名
+            $domain           = $this->getRootDomain($url, 'root');
+            $sub_domain_count = $this->sub_domain_count($url, $domain);
+            if ($sub_domain_count > self::$sub_num)
+            {
+                log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['sub_num'].", $url [Skip]");
+                return $status;
+            }
+        }
 
         $link             = $options;
         $link['url']      = $url;
@@ -474,7 +500,19 @@ class phpspider
     {
         // 投递状态
         $status = false;
-
+        //限制最大子域名数量
+        if ( ! empty(self::$sub_num))
+        {
+            //抓取超过100子域名的，就丢掉
+            $domain           = $this->getRootDomain($url, 'root');
+            $sub_domain_count = $this->sub_domain_count($url, $domain);
+            if ($sub_domain_count > self::$sub_num)
+            {
+                log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['sub_num'].", $url [Skip]");
+                //echo '[on_download_page] ' . $domain . "'s subdomin > 1000 ,Skip!\n";
+                return $status;
+            }
+        }
         $link          = $options;
         $link['url']   = $url;
         $link['depth'] = $depth;
@@ -522,6 +560,12 @@ class phpspider
     public function is_scan_page($url)
     {
         $parse_url = parse_url($url);
+        //2018-1-3 通配所有域名
+        if ( ! empty($parse_url['host']) and self::$configs['domains'][0] == '*')
+        {
+            return true;
+        }
+        //限定域名
         if (empty($parse_url['host']) || ! in_array($parse_url['host'], self::$configs['domains']))
         {
             return false;
@@ -540,6 +584,23 @@ class phpspider
     public function is_list_page($url)
     {
         $result = false;
+        //过滤下载类型文件 20180209
+        if (preg_match('/\.(zip|7z|cab|rar|iso|gho|jar|ace|tar|gz|bz2|z|xml|pdf|doc|txt|rtf|snd|xls|xlsx|docx|apk|ipa|flv|midi|mps|pls|pps|ppa|pwz|mp3|mp4|mpeg|mpe|asf|asx|mpg|3gp|mov|m4v|mkv|vob|vod|mod|ogg|rm|rmvb|wmv|avi|dat|exe|wps|js|css|bmp|jpg|png|gif|ico|tiff|jpeg|svg|webp|mpa|mdb|bin)$/iu', $url))
+        {
+            return false;
+        }
+        //增加无列表页选项，即所有页面都要抓取内容
+        if (empty(self::$configs['list_url_regexes']) or self::$configs['list_url_regexes'][0] == 'x')
+        {
+            return false;
+        }
+
+        //增加泛列表页，即所有页面都是列表页，只抓取链接，不抓取内容
+        if ( ! empty(self::$configs['list_url_regexes']) and self::$configs['list_url_regexes'][0] == '*')
+        {
+            return true;
+        }
+
         if ( ! empty(self::$configs['list_url_regexes']))
         {
             foreach (self::$configs['list_url_regexes'] as $regex)
@@ -551,6 +612,7 @@ class phpspider
                 }
             }
         }
+
         return $result;
     }
 
@@ -565,6 +627,16 @@ class phpspider
     public function is_content_page($url)
     {
         $result = false;
+        //过滤下载类型文件 20180209
+        if (preg_match('/\.(zip|7z|cab|rar|iso|gho|jar|ace|tar|gz|bz2|z|xml|pdf|doc|txt|rtf|snd|xls|xlsx|docx|apk|ipa|flv|midi|mps|pls|pps|ppa|pwz|mp3|mp4|mpeg|mpe|asf|asx|mpg|3gp|mov|m4v|mkv|vob|vod|mod|ogg|rm|rmvb|wmv|avi|dat|exe|wps|js|css|bmp|jpg|png|gif|ico|tiff|jpeg|svg|webp|mpa|mdb|bin)$/iu', $url))
+        {
+            return false;
+        }
+        //增加泛内容模式，即所有页面都要提取内容
+        if (empty(self::$configs['content_url_regexes']) or self::$configs['content_url_regexes'][0] == '*')
+        {
+            return true;
+        }
         if ( ! empty(self::$configs['content_url_regexes']))
         {
             foreach (self::$configs['content_url_regexes'] as $regex)
@@ -990,9 +1062,21 @@ class phpspider
 
             queue::set_connect('default', self::$queue_config);
             queue::init();
-            $this->do_collect_page();
 
-            // 这里用0表示正常退出
+            //退出前计时，等待1分钟，如果获取不到新任务，再退出
+            self::$stand_by_time = 0;
+            while (self::$stand_by_time < 300)
+            {
+                $this->do_collect_page();
+                log::warn('Task('.self::$taskid.') Stand By '.self::$stand_by_time.' s');
+                self::$stand_by_time++;
+                sleep(1);
+            }
+            $queue_lsize = $this->queue_lsize();
+            log::warn('Task('.self::$taskid.') exit : queue_lsize = '.$queue_lsize);
+            $this->del_task_status(self::$serverid, $taskid);
+
+            // 这里用0表示子进程正常退出
             exit(0);
         }
         else
@@ -1012,8 +1096,8 @@ class phpspider
                 // 多任务下主任务未准备就绪
                 if (self::$tasknum > 1 && ! self::$fork_task_complete)
                 {
-                    // 主进程采集到两倍于任务数时, 生成子任务一起采集
-                    if ($queue_lsize > self::$tasknum * 2)
+                    // 主进程采集到多于任务数2个时, 生成子任务一起采集
+                    if ($queue_lsize > self::$tasknum + 2)
                     {
                         self::$fork_task_complete = true;
 
@@ -1026,12 +1110,15 @@ class phpspider
                         }
                     }
                 }
-
+                //在主进程中，保存当前配置到缓存，以使子进程可实时读取动态修改后的配置 20180209
+                if (self::$use_redis and ! empty(self::$configs))
+                {
+                    queue::set('configs_'.self::$configs['name'], json_encode(self::$configs));
+                }
                 // 抓取页面
                 $this->collect_page();
                 // 保存任务状态
                 $this->set_task_status();
-
                 // 每采集成功一次页面, 就刷新一次面板
                 if ( ! log::$log_show && ! self::$daemonize)
                 {
@@ -1041,9 +1128,17 @@ class phpspider
             // 如果是子任务
             else
             {
-                // 如果队列中的网页比任务数2倍多, 子任务可以采集, 否则等待...
-                if ($queue_lsize > self::$tasknum * 2)
+                // 主进程采集到多于任务数2个时, 子任务可以采集, 否则等待...
+                if ($queue_lsize > self::$taskid + 2)
                 {
+                    //在子进程中，从内存中实时读取当前最新配置，用于适应主进程常驻内存模式，无限循环后的配置变动 20180209
+                    if (self::$use_redis and ! empty(self::$configs))
+                    {
+                        if ($configs_active = queue::get('configs_'.self::$configs['name']))
+                        {
+                            self::$configs = json_decode($configs_active, true);
+                        }
+                    }
                     // 抓取页面
                     $this->collect_page();
                     // 保存任务状态
@@ -1051,7 +1146,7 @@ class phpspider
                 }
                 else
                 {
-                    log::warn('Task('.self::$taskid.') waiting...');
+                    log::warn('Task('.self::$taskid.') waiting...reason: queue_lsize = '.$queue_lsize.' < tasknum  = '.self::$tasknum);
                     sleep(1);
                 }
             }
@@ -1071,27 +1166,65 @@ class phpspider
      */
     public function collect_page()
     {
-        $get_collect_url_num = $this->get_collect_url_num();
-        log::info("Find pages: {$get_collect_url_num} ");
-
-        $queue_lsize = $this->queue_lsize();
-        log::info("Waiting for collect pages: {$queue_lsize} ");
-
-        $get_collected_url_num = $this->get_collected_url_num();
-        log::info("Collected pages: {$get_collected_url_num} ");
-
-        // 多任务的时候输出爬虫序号
-        if (self::$tasknum > 1)
+        //减少非必要 queue_lsize 查询 20180214
+        if (isset(self::$configs['log_type']) and strstr(self::$configs['log_type'], 'info'))
         {
-            log::info('Current task id: '.self::$taskid);
+            $get_collect_url_num = $this->get_collect_url_num();
+            log::info('task id: '.self::$taskid." Find pages: {$get_collect_url_num} ");
+
+            $queue_lsize = $this->queue_lsize();
+            log::info('task id: '.self::$taskid." Waiting for collect pages: {$queue_lsize} ");
+
+            $get_collected_url_num = $this->get_collected_url_num();
+            log::info('task id: '.self::$taskid." Collected pages: {$get_collected_url_num} ");
+
+            // 多任务的时候输出爬虫序号
+            if (self::$tasknum > 1)
+            {
+                log::info('Current task id: '.self::$taskid);
+            }
+        }
+        //顺序提取任务，先进先出(当配置 queue_order = rand ，先进先出无效，都为随机提取任务)
+        $link = $this->queue_rpop();
+
+        if (empty($link))
+        {
+            log::warn('Task('.self::$taskid.') Get Task link Fail...Stand By...');
+            return false;
+        }
+        $link = $this->link_uncompress($link);
+        if (empty($link['url']))
+        {
+            log::warn('Task('.self::$taskid.') Get Task url Fail...Stand By...');
+            return false;
+        }
+        self::$stand_by_time = 0; //接到任务，则超时退出计时重置
+
+        $url = $link['url'];
+
+        //限制单域名最大url数量 20180213
+        if (isset(self::$configs['max_pages']) and self::$configs['max_pages'] > 0)
+        {
+            $domain_pages_num = $this->incr_pages_num($url);
+            if ($domain_pages_num > self::$configs['max_pages'])
+            {
+                log::debug('Task('.self::$taskid.') pages more than '.self::$configs['max_pages'].", $url [Skip]");
+                return false;
+            }
         }
 
-        // 先进先出
-        $link = $this->queue_rpop();
-        $link = $this->link_uncompress($link);
-        $url  = $link['url'];
+        //限制单域名最大花费时长 20180213
+        if (isset(self::$configs['max_duration']) and self::$configs['max_duration'] > 0)
+        {
+            $domain_duration = $this->get_duration_num($url);
+            if ($domain_duration > self::$configs['max_duration'])
+            {
+                log::debug('Task('.self::$taskid.') duration more than '.self::$configs['max_duration'].", $url [Skip]");
+                return false;
+            }
+        }
 
-        // 标记为已爬取网页
+        // 已采集页面数量 +1
         $this->incr_collected_url_num($url);
 
         // 爬取页面开始时间
@@ -1099,6 +1232,16 @@ class phpspider
 
         requests::$input_encoding = null;
         $html                     = $this->request_url($url, $link);
+
+        //记录速度较慢域名花费抓取时间 20180213
+        $time_run = round(microtime(true) - $page_time_start);
+        if ($time_run > 1)
+        {
+            $this->incr_duration_num($url, $time_run);
+        }
+
+        // 爬完页面开始处理时间
+        $page_time_start = microtime(true);
 
         if ( ! $html)
         {
@@ -1210,14 +1353,16 @@ class phpspider
         }
 
         // 如果当前深度大于缓存的, 更新缓存
-        $this->incr_depth_num($link['depth']);
-
+        if (self::$taskmaster)
+        {
+            $this->incr_depth_num($link['depth']);
+        }
         // 处理页面耗时时间
         $time_run = round(microtime(true) - $page_time_start, 3);
-        log::debug("Success process page {$url} in {$time_run} s");
+        log::debug('task id: '.self::$taskid." Success process page {$url} in {$time_run} s");
 
         $spider_time_run = util::time2second(intval(microtime(true) - self::$time_start));
-        log::info("Spider running in {$spider_time_run}");
+        log::info('task id: '.self::$taskid." Spider running in {$spider_time_run}");
 
         // 爬虫爬取每个网页的时间间隔, 单位: 毫秒
         if ( ! isset(self::$configs['interval']))
@@ -1271,8 +1416,9 @@ class phpspider
                 requests::set_header($k, $v);
             }
         }
-
-        $method = empty($link['method']) ? 'get' : strtolower($link['method']);
+        //限制 http 请求模式为 get 或 post
+        $method = trim(strtolower($link['method']));
+        $method = ($method == 'post') ? 'post' : 'get';
         $params = empty($link['params']) ? array() : $link['params'];
         $html   = requests::$method($url, $params);
         // 此url附加的数据不为空, 比如内容页需要列表页一些数据, 拼接到后面去
@@ -1324,14 +1470,14 @@ class phpspider
             }
             else
             {
-                if ($http_code == 407)
+                if ( ! empty(self::$configs['max_try']) and $http_code == 407)
                 {
                     // 扔到队列头部去, 继续采集
                     $this->queue_rpush($link);
                     log::error("Failed to download page {$url}");
                     self::$collect_fail++;
                 }
-                elseif (in_array($http_code, array('0', '502', '503', '429')))
+                elseif ( ! empty(self::$configs['max_try']) and in_array($http_code, array('0', '502', '503', '429')))
                 {
                     // 采集次数加一
                     $link['try_num']++;
@@ -1399,13 +1545,26 @@ class phpspider
 
         foreach ($urls as $key => $url)
         {
+            //限制最大子域名数量
+            if ( ! empty(self::$sub_num))
+            {
+                //抓取子域名超过超过指定值，就丢掉
+                $domain           = $this->getRootDomain($url, 'root');
+                $sub_domain_count = $this->sub_domain_count($url, $domain);
+                if ($sub_domain_count > self::$sub_num)
+                {
+                    unset($urls[$key]);
+                    log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['sub_num'].", $url [Skip]");
+                    continue;
+                }
+            }
             $urls[$key] = str_replace(array('"', "'", '&amp;'), array('', '', '&'), $url);
         }
 
         //--------------------------------------------------------------------------------
         // 过滤和拼凑URL
         //--------------------------------------------------------------------------------
-        // 去除重复的RUL
+        // 去除重复的URL
         $urls = array_unique($urls);
         foreach ($urls as $k => $url)
         {
@@ -1416,6 +1575,17 @@ class phpspider
             }
 
             $val = $this->fill_url($url, $collect_url);
+
+            //限制单域名最大url数量 20180213
+            if ($val and isset(self::$configs['max_pages']) and self::$configs['max_pages'] > 0)
+            {
+                $domain_pages_num = $this->incr_pages_num($val);
+                if ($domain_pages_num > self::$configs['max_pages'])
+                {
+                    continue;
+                }
+            }
+
             if ($val)
             {
                 $urls[$k] = $val;
@@ -1475,12 +1645,12 @@ class phpspider
 
         // 排除JavaScript的连接
         //if (strpos($url, "javascript:") !== false)
-        if (preg_match("@^(javascript:|#|'|\")@i", $url) || $url == '')
+        if (preg_match("@^(mailto|javascript:|#|'|\")@i", $url) || $url == '')
         {
             return false;
         }
         // 排除没有被解析成功的语言标签
-        if (substr($url, 0, 3) == '<%=')
+        if (substr($url, 0, 3) == '<%=' or substr($url, 0, 1) == '{')
         {
             return false;
         }
@@ -1501,20 +1671,19 @@ class phpspider
         $base_url_path = $domain.$path;
         $base_url_path = preg_replace("/\/([^\/]*)\.(.*)$/", '/', $base_url_path);
         $base_url_path = preg_replace("/\/$/", '', $base_url_path);
-
-        $i    = $path_step    = 0;
-        $dstr = $pstr = '';
-        $pos  = strpos($url, '#');
+        $i             = $path_step             = 0;
+        $dstr          = $pstr          = '';
+        $pos           = strpos($url, '#');
         if ($pos > 0)
         {
             // 去掉#和后面的字符串
             $url = substr($url, 0, $pos);
         }
 
-        // 京东变态的都是 //www.jd.com/111.html
+        // 修正url格式为 //www.jd.com/111.html 为正确的http
         if (substr($url, 0, 2) == '//')
         {
-            $url = str_replace('//', '', $url);
+            $url = preg_replace('/^\/\//iu', '', $url);
         }
         // /1234.html
         elseif ($url[0] == '/')
@@ -1523,7 +1692,7 @@ class phpspider
         }
         // ./1234.html、../1234.html 这种类型的
         elseif ($url[0] == '.')
-        {
+        { 
             if ( ! isset($url[2]))
             {
                 return false;
@@ -1577,22 +1746,26 @@ class phpspider
             }
             else
             {
-                $arr = explode('/', $base_url_path);
-                array_pop($arr);
-                $base_url_path = implode('/', $arr);
-                $url           = $base_url_path.'/'.$url;
+                //$arr = explode("/", $base_url_path);
+                //array_pop($arr);
+                //$base_url_path = implode("/", $arr);
+                $url = $base_url_path.'/'.$url;
             }
         }
         // 两个 / 或以上的替换成一个 /
-        $url = preg_replace('@/{1,}@i', '/', $url);
+        $url = preg_replace('/\/{1,}/i', '/', $url);
         $url = $scheme.'://'.$url;
-        //echo $url;exit("\n");
 
         $parse_url = @parse_url($url);
         $domain    = empty($parse_url['host']) ? $domain : $parse_url['host'];
         // 如果host不为空, 判断是不是要爬取的域名
         if ( ! empty($parse_url['host']))
         {
+            //2018-1-3 通配所有域名
+            if (self::$configs['domains'][0] == '*')
+            {
+                return $url;
+            }
             //排除非域名下的url以提高爬取速度
             if ( ! in_array($parse_url['host'], self::$configs['domains']))
             {
@@ -1736,7 +1909,7 @@ class phpspider
                     $fields_str = json_encode($fields);
                     $fields_str = preg_replace_callback("#\\\u([0-9a-f]{4})#i", function ($matchs)
                     {
-                        return iconv('UCS-2BE', 'UTF-8', pack('H4', $matchs[1]));
+                        return @iconv('UCS-2BE', 'UTF-8', pack('H4', $matchs[1]));
                     }, $fields_str);
                 }
                 else
@@ -1813,10 +1986,7 @@ class phpspider
                         $link['url']              = $collect_url;
                         $link                     = $this->link_uncompress($link);
                         requests::$input_encoding = null;
-                        //$method = empty($link['method']) ? 'get' : strtolower($link['method']);
-                        //$params = empty($link['params']) ? array() : $link['params'];
-                        //$html = requests::$method($collect_url, $params);
-                        $html = $this->request_url($collect_url, $link);
+                        $html                     = $this->request_url($collect_url, $link);
                         // 在一个attached_url对应的网页下载完成之后调用. 主要用来对下载的网页进行处理.
                         if ($this->on_download_attached_page)
                         {
@@ -2019,7 +2189,6 @@ class phpspider
             return false;
         }
 
-        //if (queue::exists("collect_queue"))
         $keys  = queue::keys('*');
         $count = count($keys);
         if ($count != 0)
@@ -2324,7 +2493,15 @@ class phpspider
                     queue::set($key, time());
                     // 入队列
                     $link = json_encode($link);
-                    queue::lpush('collect_queue', $link);
+                    //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
+                    if (isset(self::$configs['queue_order']) and self::$configs['queue_order'] == 'rand')
+                    {
+                        queue::sadd('collect_queue', $link);
+                    }
+                    else
+                    {
+                        queue::lpush('collect_queue', $link);
+                    }
                     $status = true;
                 }
                 // 解锁
@@ -2379,7 +2556,15 @@ class phpspider
                     queue::set($key, time());
                     // 入队列
                     $link = json_encode($link);
-                    queue::rpush('collect_queue', $link);
+                    //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
+                    if (isset(self::$configs['queue_order']) and self::$configs['queue_order'] == 'rand')
+                    {
+                        queue::sadd('collect_queue', $link);//无序集合
+                    }
+                    else
+                    {
+                        queue::rpush('collect_queue', $link);//有序列表
+                    }
                     $status = true;
                 }
                 // 解锁
@@ -2414,7 +2599,15 @@ class phpspider
     {
         if (self::$use_redis)
         {
-            $link = queue::lpop('collect_queue');
+            //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
+            if (isset(self::$configs['queue_order']) and self::$configs['queue_order'] == 'rand')
+            {
+                $link = queue::spop('collect_queue');
+            }
+            else
+            {
+                $link = queue::lpop('collect_queue');
+            }
             $link = json_decode($link, true);
         }
         else
@@ -2435,7 +2628,15 @@ class phpspider
     {
         if (self::$use_redis)
         {
-            $link = queue::rpop('collect_queue');
+            //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
+            if (isset(self::$configs['queue_order']) and self::$configs['queue_order'] == 'rand')
+            {
+                $link = queue::spop('collect_queue');
+            }
+            else
+            {
+                $link = queue::rpop('collect_queue');
+            }
             $link = json_decode($link, true);
         }
         else
@@ -2456,7 +2657,15 @@ class phpspider
     {
         if (self::$use_redis)
         {
-            $lsize = queue::lsize('collect_queue');
+            //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
+            if (isset(self::$configs['queue_order']) and self::$configs['queue_order'] == 'rand')
+            {
+                $lsize = queue::scard('collect_queue');
+            }
+            else
+            {
+                $lsize = queue::lsize('collect_queue');
+            }
         }
         else
         {
@@ -2556,6 +2765,92 @@ class phpspider
             $fields_num = self::$fields_num;
         }
         return $fields_num ? $fields_num : 0;
+    }
+
+    /**
+     * 提取到的pages数目加一，用于限制单域名采集页数上限
+     *
+     * @return void
+     * @author seatle <seatle@foxmail.com>
+     * @created time :2018-02-13 18:59
+     */
+    public function incr_pages_num($url = '')
+    {
+        if (self::$use_redis)
+        {
+            if ( ! empty($url))
+            {
+                $domain = $this->getRootDomain($url);
+            }
+            if (empty($domain))
+            {
+                $domain = 'all';
+            }
+            $pages_num[$domain] = queue::incr('pages_num:'.$domain);
+        }
+        else
+        {
+            self::$pages_num[$domain]++;
+            $pages_num[$domain] = self::$pages_num[$domain];
+        }
+        return $pages_num[$domain];
+    }
+
+    /**
+     * 超过1秒的慢速采集时间汇总，用于限制单域名总采集时间上限
+     *
+     * @return void
+     * @author seatle <seatle@foxmail.com>
+     * @created time :2018-02-13 18:59
+     */
+    public function incr_duration_num($url = '', $time_run = 1)
+    {
+        if ( ! empty($url))
+        {
+            $domain = $this->getRootDomain($url);
+        }
+        if (empty($domain))
+        {
+            $domain = 'all';
+        }
+        if (self::$use_redis)
+        {
+            $duration[$domain] = queue::incr('duration:'.$domain, $time_run);
+        }
+        else
+        {
+            self::$duration[$domain]++;
+            $duration[$domain] = self::$duration[$domain];
+        }
+        return $duration[$domain];
+    }
+
+    /**
+     * 读取单域名总慢速采集时间
+     *
+     * @return void
+     * @author seatle <seatle@foxmail.com>
+     * @created time :2016-09-23 17:13
+     */
+    public function get_duration_num($url = '')
+    {
+        if ( ! empty($url))
+        {
+            $domain = $this->getRootDomain($url);
+        }
+        if (empty($domain))
+        {
+            $domain = 'all';
+        }
+        if (self::$use_redis)
+        {
+            $duration[$domain] = queue::get('duration:'.$domain);
+        }
+        else
+        {
+            $duration[$domain] = self::$duration[$domain];
+        }
+        return $duration[$domain] ? $duration[$domain] : 0;
     }
 
     /**
@@ -2729,7 +3024,7 @@ class phpspider
         // 返回到第一行,第一列
         //echo "\033[0;0H";
         $display_str .= "---------------------------------------------------------------------\n";
-        $display_str .= 'Press Ctrl-C to quit. Start success.';
+        $display_str .= 'Press Ctrl-C to quit. Start success.'.date('Y-m-d H:i:s').' - '.round(memory_get_usage() / 1024 / 1024, 2).'MB'."\n";
         if (self::$terminate)
         {
             $display_str .= "\n\033[33mWait for the process exits...\033[0m";
@@ -2901,5 +3196,180 @@ class phpspider
     //}
     //return $fileinfo;
     //}
+
+    //返回当前是否是主进程
+    public function is_taskmaster()
+    {
+        return self::$taskmaster;
+    }
+
+    //返回当前是否进程ID
+    public function get_task_id()
+    {
+        return self::$taskid;
+    }
+
+    //检测子域名数量
+    public function sub_domain_count($url)
+    {
+        if (empty($url))
+        {
+            return false;
+        }
+        $count = 0;
+        if (self::$use_redis)
+        {
+            $domain = $this->getRootDomain($url);
+            if (empty($domain))
+            {
+                return false;
+            }
+            $count = queue::get($domain);
+            if ( ! empty(self::$sub_num) and $count > self::$sub_num)
+            {
+                return $count;
+            }
+            if ( ! preg_match('/^http/iu', $url))
+            {
+                $url = 'http://'.$url;
+            }
+            $key    = 'collect_urls-'.md5($url);
+            $exists = queue::exists($key);
+            // 不存在或者当然URL可重复入
+            if ( ! $exists)
+            {
+                $url_parse = parse_url(strtolower($url));
+                if (empty($url_parse['host']))
+                {
+                    return $count;
+                }
+                $url = $url_parse['host'];
+                if (strlen($url) > 32)
+                {
+                    $url = md5($url);
+                }
+                $key    = 'sub_d-'.$url;
+                $exists = queue::exists($key);
+                if ( ! $exists)
+                {
+                    // 子域名数量加一
+                    $count = queue::incr($domain);
+                    queue::set($key, 1);
+                }
+            }
+        }
+        return $count;
+    }
+
+    //提取url的根域名 host domain subdomain name tld
+    public function getRootDomain($url = '', $type = 'root')
+    {
+        if (empty($url))
+        {
+            return $url;
+        }
+        if (preg_match_all('/(http[s]?:\/\/[\p{Han}a-zA-Z0-9\-&\.\/]*)/iu', $url, $arr))
+        {
+            $url = $arr['0']['0'];
+        }
+        #列举域名中固定元素
+        $state_domain = array('com', 'edu', 'gov', 'int', 'mil', 'net', 'org', 'biz', 'info', 'pro', 'name', 'coop', 'aero', 'xxx', 'idv', 'mobi', 'cc', 'me', 'jp', 'uk', 'ws', 'eu', 'pw', 'kr', 'io', 'us', 'cn', 'al', 'dz', 'af', 'ar', 'ae', 'aw', 'om', 'az', 'eg', 'et', 'ie', 'ee', 'ad', 'ao', 'ai', 'ag', 'at', 'au', 'mo', 'bb', 'pg', 'bs', 'pk', 'py', 'ps', 'bh', 'pa', 'br', 'by', 'bm', 'bg', 'mp', 'bj', 'be', 'is', 'pr', 'ba', 'pl', 'bo', 'bz', 'bw', 'bt', 'bf', 'bi', 'bv', 'kp', 'gq', 'dk', 'de', 'tl', 'tp', 'tg', 'dm', 'do', 'ru', 'ec', 'er', 'fr', 'fo', 'pf', 'gf', 'tf', 'va', 'ph', 'fj', 'fi', 'cv', 'fk', 'gm', 'cg', 'cd', 'co', 'cr', 'gg', 'gd', 'gl', 'ge', 'cu', 'gp', 'gu', 'gy', 'kz', 'ht', 'nl', 'an', 'hm', 'hn', 'ki', 'dj', 'kg', 'gn', 'gw', 'ca', 'gh', 'ga', 'kh', 'cz', 'zw', 'cm', 'qa', 'ky', 'km', 'ci', 'kw', 'hr', 'ke', 'ck', 'lv', 'ls', 'la', 'lb', 'lt', 'lr', 'ly', 'li', 're', 'lu', 'rw', 'ro', 'mg', 'im', 'mv', 'mt', 'mw', 'my', 'ml', 'mk', 'mh', 'mq', 'yt', 'mu', 'mr', 'um', 'as', 'vi', 'mn', 'ms', 'bd', 'pe', 'fm', 'mm', 'md', 'ma', 'mc', 'mz', 'mx', 'nr', 'np', 'ni', 'ne', 'ng', 'nu', 'no', 'nf', 'na', 'za', 'aq', 'gs', 'pn', 'pt', 'se', 'ch', 'sv', 'yu', 'sl', 'sn', 'cy', 'sc', 'sa', 'cx', 'st', 'sh', 'kn', 'lc', 'sm', 'pm', 'vc', 'lk', 'sk', 'si', 'sj', 'sz', 'sd', 'sr', 'sb', 'so', 'tj', 'tw', 'th', 'tz', 'to', 'tc', 'tt', 'tn', 'tv', 'tr', 'tm', 'tk', 'wf', 'vu', 'gt', 've', 'bn', 'ug', 'ua', 'uy', 'uz', 'es', 'eh', 'gr', 'hk', 'sg', 'nc', 'nz', 'hu', 'sy', 'jm', 'am', 'ac', 'ye', 'iq', 'ir', 'il', 'it', 'in', 'id', 'vg', 'jo', 'vn', 'zm', 'je', 'td', 'gi', 'cl', 'cf', 'yr', 'arpa', 'museum', 'asia', 'ax', 'bl', 'bq', 'cat', 'cw', 'gb', 'jobs', 'mf', 'rs', 'su', 'sx', 'tel', 'travel', 'shop', 'ltd', 'store', 'vip', '网店', '中国', '公司', '网络', 'co.il', 'co.nz', 'co.uk', 'me.uk', 'org.uk', 'com.sb', '在线', '中文网', '移动', 'wang', 'club', 'ren', 'top', 'website', 'cool', 'company', 'city', 'email', 'market', 'software', 'ninja', '我爱你', 'bike', 'today', 'life', 'space', 'pub', 'site', 'help', 'link', 'photo', 'video', 'click', 'pics', 'sexy', 'audio', 'gift', 'tech', '网址', 'online', 'win', 'download', 'party', 'bid', 'loan', 'date', 'trade', 'red', 'blue', 'pink', 'poker', 'green', 'farm', 'zone', 'guru', 'tips', 'land', 'care', 'camp', 'cab', 'cash', 'limo', 'toys', 'tax', 'town', 'fish', 'fund', 'fail', 'house', 'shoes', 'media', 'guide', 'tools', 'solar', 'watch', 'cheap', 'rocks', 'news', 'live', 'lawyer', 'host', 'wiki', 'ink', 'design', 'lol', 'hiphop', 'hosting', 'diet', 'flowers', 'car', 'cars', 'auto', 'mom', 'cq', 'he', 'nm', 'ln', 'jl', 'hl', 'js', 'zj', 'ah', 'jx', 'ha', 'hb', 'gx', 'hi', 'gz', 'yn', 'xz', 'qh', 'nx', 'xj', 'xyz', 'xin', 'science', 'press', 'band', 'engineer', 'social', 'studio', 'work', 'game', 'kim', 'games', 'group', '集团');
+        if ( ! preg_match('/^http[s]?/is', $url))
+        {
+            $url = 'http://'.$url;
+        }
+        $res           = '';
+        $res['scheme'] = '';
+        $res['host']   = '';
+        $res['path']   = '';
+        $res['name']   = '';
+        $res['domain'] = '';
+        $url_parse     = parse_url(strtolower($url));
+        if (empty($url_parse['host']))
+        {
+            return '';
+        }
+        $urlarr        = explode('.', $url_parse['host']);
+        $count         = count($urlarr);
+        $res['scheme'] = $url_parse['scheme'];
+        $res['host']   = $url_parse['host'];
+        if ( ! empty($url_parse['path']))
+        {
+            $res['path'] = $url_parse['path'];
+        }
+        if ($count <= 2)
+        {
+            #当域名直接根形式不存在host部分直接输出
+            $last   = array_pop($urlarr);
+            $last_1 = array_pop($urlarr);
+            if (in_array($last, $state_domain))
+            {
+                $res['domain'] = $last_1.'.'.$last;
+                $res['name']   = $last_1;
+                $res['tld']    = $last;
+            }
+        }
+        elseif ($count > 2)
+        {
+            $last          = array_pop($urlarr);
+            $last_1        = array_pop($urlarr);
+            $last_2        = array_pop($urlarr);
+            $res['domain'] = $last_1.'.'.$last; //默认为n.com形式
+            $res['name']   = $last_2;
+            if (in_array($last, $state_domain))
+            {
+                $res['domain'] = $last_1.'.'.$last; //n.com形式
+                $res['name']   = $last_1;
+                $res['tld']    = $last;
+            }
+            //排除顶级根二级后缀
+            if ($last_1 !== $last and in_array($last_1, $state_domain) and ! in_array($last, array('com', 'net', 'org', 'edu', 'gov')))
+            {
+                $res['domain'] = $last_2.'.'.$last_1.'.'.$last; //n.n.com形式
+                $res['name']   = $last_2;
+                $res['tld']    = $last_1.'.'.$last;
+            }
+            //限定cn顶级根二级后缀为'com', 'net', 'org', 'edu', 'gov'
+            if (in_array($last, array('cn')) and $last_1 !== $last and strlen($last_1) > 2 and ! in_array($last_1, array('com', 'net', 'org', 'edu', 'gov')))
+            {
+                $res['domain'] = $last_1.'.'.$last; //n.n.cn形式
+                $res['name']   = $last_1;
+                $res['tld']    = $last;
+            }
+        }
+        //排除未收录域名
+        if ( ! in_array($last, $state_domain))
+        {
+            return false;
+        }
+        //检测和验证返回的是不是域名
+        if ( ! empty($res['domain']) and preg_match('/^([\p{Han}a-zA-Z0-9])+([\p{Han}a-zA-Z0-9\-])*\.[a-zA-Z\.\p{Han}]+$/iu', $res['domain']))
+        {
+            if ($type == 'arr')
+            {
+                return $res;
+            }
+            elseif ($type == 'host')
+            {
+                return $res['host'];
+            }
+            elseif ($type == 'tld')
+            {
+                return $res['tld'];
+            }
+            elseif ($type == 'subdomain')
+            {
+                return $res['name'];
+            }
+            else
+            {
+                return $res['domain'];
+            }
+        }
+        else
+        {
+            return '';
+        }
+    }
 
 }

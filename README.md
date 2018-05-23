@@ -14,11 +14,11 @@ $configs = array(
     'tasknum' => 5,//并发进程数，限在linux中有效，windows中只有单进程
     'domains' => array(
 	//新增参数 1
-	//'*',//通配所有域名，不限定域名抓取，使用此项时，请同时指定抓取深度最好不要超过3
+	//'*',//通配所有域名，不限定域名抓取，使用此项时，请同时指定抓取深度 max_depth 最好不要超过3
         'qiushibaike.com',
         'www.qiushibaike.com'
     ),
-    'max_depth' => 2, //网页深度，超过深度的页面不再采集 默认值为0，即不限制
+    'max_depth' => 2, //网页抓取深度，超过深度的页面不再采集 默认值为0，即不限制
     'scan_urls' => array(
         'http://www.qiushibaike.com/'
     ),

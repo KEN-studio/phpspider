@@ -15,35 +15,35 @@
 
 namespace phpspider\core;
 
-use Redis;
 use Exception;
+use Redis;
 
 class queue
 {
     /**
      *  redis链接标识符号
      */
-    protected static $redis   = NULL;
+    protected static $redis = null;
 
     /**
      *  redis配置数组
      */
     protected static $configs = array();
-    private static $links = array();
+    private static $links     = array();
     private static $link_name = 'default';
-    
+
     /**
      *  默认redis前缀
      */
-    public static $prefix  = "phpspider";
+    public static $prefix = 'phpspider';
 
-    public static $error  = "";
+    public static $error = '';
 
     public static function init()
     {
-        if (!extension_loaded("redis"))
+        if ( ! extension_loaded('redis'))
         {
-            self::$error = "The redis extension was not found";
+            self::$error = 'The redis extension was not found';
             return false;
         }
 
@@ -55,9 +55,9 @@ class queue
         if (empty(self::$links[self::$link_name]))
         {
             self::$links[self::$link_name] = new Redis();
-            if (!self::$links[self::$link_name]->connect($config['host'], $config['port'], $config['timeout']))
+            if ( ! self::$links[self::$link_name]->connect($config['host'], $config['port'], $config['timeout']))
             {
-                self::$error = "Unable to connect to redis server";
+                self::$error = 'Unable to connect to redis server';
                 unset(self::$links[self::$link_name]);
                 return false;
             }
@@ -65,16 +65,16 @@ class queue
             // 验证
             if ($config['pass'])
             {
-                if ( !self::$links[self::$link_name]->auth($config['pass']) ) 
+                if ( ! self::$links[self::$link_name]->auth($config['pass']))
                 {
-                    self::$error = "Redis Server authentication failed";
+                    self::$error = 'Redis Server authentication failed';
                     unset(self::$links[self::$link_name]);
                     return false;
                 }
             }
 
             $prefix = empty($config['prefix']) ? self::$prefix : $config['prefix'];
-            self::$links[self::$link_name]->setOption(Redis::OPT_PREFIX, $prefix . ":");
+            self::$links[self::$link_name]->setOption(Redis::OPT_PREFIX, $prefix.':');
             // 永不超时
             // ini_set('default_socket_timeout', -1); 无效，要用下面的做法
             self::$links[self::$link_name]->setOption(Redis::OPT_READ_TIMEOUT, -1);
@@ -86,9 +86,9 @@ class queue
 
     public static function clear_link()
     {
-        if(self::$links) 
+        if (self::$links)
         {
-            foreach(self::$links as $k=>$v)
+            foreach (self::$links as $k => $v)
             {
                 $v->close();
                 unset(self::$links[$k]);
@@ -99,7 +99,7 @@ class queue
     public static function set_connect($link_name, $config = array())
     {
         self::$link_name = $link_name;
-        if (!empty($config))
+        if ( ! empty($config))
         {
             self::$configs[self::$link_name] = $config;
         }
@@ -107,7 +107,7 @@ class queue
         {
             if (empty(self::$configs[self::$link_name]))
             {
-                throw new Exception("You not set a config array for connect!");
+                throw new Exception('You not set a config array for connect!');
             }
         }
         //print_r(self::$configs);
@@ -115,8 +115,8 @@ class queue
         //// 先断开原来的连接
         //if ( !empty(self::$links[self::$link_name]) )
         //{
-            //self::$links[self::$link_name]->close();
-            //self::$links[self::$link_name] = null;
+        //self::$links[self::$link_name]->close();
+        //self::$links[self::$link_name] = null;
         //}
     }
 
@@ -127,15 +127,15 @@ class queue
     }
 
     /**
-    * 获取默认配置
-    */
+     * 获取默认配置
+     */
     protected static function _get_default_config()
     {
         if (empty(self::$configs['default']))
         {
-            if (!is_array($GLOBALS['config']['redis']))
+            if ( ! is_array($GLOBALS['config']['redis']))
             {
-                exit('cls_redis.php _get_default_config()' . '没有redis配置');
+                exit('cls_redis.php _get_default_config()'.'没有redis配置');
                 // You not set a config array for connect\nPlease check the configuration file config/inc_config.php
             }
             self::$configs['default'] = $GLOBALS['config']['redis'];
@@ -145,12 +145,12 @@ class queue
 
     /**
      * set
-     * 
+     *
      * @param mixed $key    键
      * @param mixed $value  值
      * @param int $expire   过期时间，单位：秒
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function set($key, $value, $expire = 0)
@@ -158,7 +158,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 if ($expire > 0)
                 {
@@ -174,7 +174,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -182,18 +182,17 @@ class queue
                 return self::set($key, $value, $expire);
             }
         }
-        return NULL;
+        return null;
     }
-
 
     /**
      * set
-     * 
+     *
      * @param mixed $key    键
      * @param mixed $value  值
      * @param int $expire   过期时间，单位：秒
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function setnx($key, $value, $expire = 0)
@@ -201,7 +200,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 if ($expire > 0)
                 {
@@ -222,7 +221,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -230,29 +229,32 @@ class queue
                 return self::setnx($key, $value, $expire);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * 锁
      * 默认锁1秒
-     * 
+     *
      * @param mixed $name   锁的标识名
      * @param mixed $value  锁的值,貌似没啥意义
      * @param int $expire   当前锁的最大生存时间(秒)，必须大于0，超过生存时间系统会自动强制释放锁
      * @param int $interval   获取锁失败后挂起再试的时间间隔(微秒)
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2016-10-30 23:56
      */
     public static function lock($name, $value = 1, $expire = 5, $interval = 100000)
     {
-        if ($name == null) return false;
+        if ($name == null)
+        {
+            return false;
+        }
 
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 $key = "Lock:{$name}";
                 while (true)
@@ -260,7 +262,7 @@ class queue
                     // 因为 setnx 没有 expire 设置，所以还是用set
                     //$result = self::$links[self::$link_name]->setnx($key, $value);
                     $result = self::$links[self::$link_name]->set($key, $value, array('nx', 'ex' => $expire));
-                    if ($result != false) 
+                    if ($result != false)
                     {
                         return true;
                     }
@@ -274,7 +276,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -294,10 +296,10 @@ class queue
 
     /**
      * get
-     * 
+     *
      * @param mixed $key
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function get($key)
@@ -305,7 +307,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->get($key);
             }
@@ -314,7 +316,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -322,15 +324,15 @@ class queue
                 return self::get($key);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * del 删除数据
-     * 
+     *
      * @param mixed $key
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function del($key)
@@ -338,7 +340,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->del($key);
             }
@@ -347,7 +349,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -355,15 +357,15 @@ class queue
                 return self::del($key);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * type 返回值的类型
-     * 
+     *
      * @param mixed $key
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function type($key)
@@ -378,10 +380,10 @@ class queue
 
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 $type = self::$links[self::$link_name]->type($key);
-                if (isset($types[$type])) 
+                if (isset($types[$type]))
                 {
                     return $types[$type];
                 }
@@ -391,7 +393,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -399,16 +401,16 @@ class queue
                 return self::type($key);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * incr 名称为key的string增加integer, integer为0则增1
-     * 
+     *
      * @param mixed $key
      * @param int $integer
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function incr($key, $integer = 0)
@@ -416,13 +418,13 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
-                if (empty($integer)) 
+                if (empty($integer))
                 {
                     return self::$links[self::$link_name]->incr($key);
                 }
-                else 
+                else
                 {
                     return self::$links[self::$link_name]->incrby($key, $integer);
                 }
@@ -432,7 +434,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -440,16 +442,16 @@ class queue
                 return self::incr($key, $integer);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * decr 名称为key的string减少integer, integer为0则减1
-     * 
+     *
      * @param mixed $key
      * @param int $integer
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function decr($key, $integer = 0)
@@ -457,13 +459,13 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
-                if (empty($integer)) 
+                if (empty($integer))
                 {
                     return self::$links[self::$link_name]->decr($key);
                 }
-                else 
+                else
                 {
                     return self::$links[self::$link_name]->decrby($key, $integer);
                 }
@@ -473,7 +475,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -481,16 +483,16 @@ class queue
                 return self::decr($key, $integer);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * append 名称为key的string的值附加value
-     * 
+     *
      * @param mixed $key
      * @param mixed $value
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function append($key, $value)
@@ -498,7 +500,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->append($key, $value);
             }
@@ -507,7 +509,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -515,17 +517,17 @@ class queue
                 return self::append($key, $value);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * substr 返回名称为key的string的value的子串
-     * 
+     *
      * @param mixed $key
      * @param mixed $start
      * @param mixed $end
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function substr($key, $start, $end)
@@ -533,7 +535,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->substr($key, $start, $end);
             }
@@ -542,7 +544,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -550,15 +552,15 @@ class queue
                 return self::substr($key, $start, $end);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * select 按索引查询
-     * 
+     *
      * @param mixed $index
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function select($index)
@@ -566,7 +568,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->select($index);
             }
@@ -575,7 +577,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -583,15 +585,15 @@ class queue
                 return self::select($index);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * dbsize 返回当前数据库中key的数目
-     * 
+     *
      * @param mixed $key
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function dbsize()
@@ -599,7 +601,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->dbsize();
             }
@@ -608,7 +610,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -616,14 +618,14 @@ class queue
                 return self::dbsize();
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * flushdb 删除当前选择数据库中的所有key
-     * 
+     *
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function flushdb()
@@ -631,7 +633,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->flushdb();
             }
@@ -640,7 +642,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -648,14 +650,14 @@ class queue
                 return self::flushdb();
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * flushall 删除所有数据库中的所有key
-     * 
+     *
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function flushall()
@@ -663,7 +665,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->flushall();
             }
@@ -672,7 +674,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -680,15 +682,15 @@ class queue
                 return self::flushall();
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * save 将数据保存到磁盘
-     * 
+     *
      * @param mixed $is_bgsave 将数据异步保存到磁盘
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function save($is_bgsave = false)
@@ -696,13 +698,13 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
-                if (!$is_bgsave) 
+                if ( ! $is_bgsave)
                 {
                     return self::$links[self::$link_name]->save();
                 }
-                else 
+                else
                 {
                     return self::$links[self::$link_name]->bgsave();
                 }
@@ -712,7 +714,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -720,14 +722,14 @@ class queue
                 return self::save($is_bgsave);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * info 提供服务器的信息和统计
-     * 
+     *
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function info()
@@ -735,7 +737,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->info();
             }
@@ -744,7 +746,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -752,14 +754,14 @@ class queue
                 return self::info();
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * slowlog 慢查询日志
-     * 
+     *
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function slowlog($command = 'get', $len = 0)
@@ -767,13 +769,13 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
-                if (!empty($len)) 
+                if ( ! empty($len))
                 {
                     return $redis->slowlog($command, $len);
                 }
-                else 
+                else
                 {
                     return $redis->slowlog($command);
                 }
@@ -783,7 +785,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -791,14 +793,14 @@ class queue
                 return self::slowlog($command, $len);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * lastsave 返回上次成功将数据保存到磁盘的Unix时戳
-     * 
+     *
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-18 11:28
      */
     public static function lastsave()
@@ -806,7 +808,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->lastsave();
             }
@@ -815,7 +817,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -823,16 +825,16 @@ class queue
                 return self::lastsave();
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * lpush 将数据从左边压入
-     * 
+     *
      * @param mixed $key
      * @param mixed $value
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function lpush($key, $value)
@@ -840,7 +842,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->lpush($key, $value);
             }
@@ -849,7 +851,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -857,16 +859,16 @@ class queue
                 return self::lpush($key, $value);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * rpush 将数据从右边压入
-     * 
+     *
      * @param mixed $key
      * @param mixed $value
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function rpush($key, $value)
@@ -874,7 +876,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->rpush($key, $value);
             }
@@ -883,7 +885,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -891,15 +893,15 @@ class queue
                 return self::rpush($key, $value);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * lpop 从左边弹出数据, 并删除数据
-     * 
+     *
      * @param mixed $key
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function lpop($key)
@@ -907,7 +909,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->lpop($key);
             }
@@ -916,7 +918,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -924,15 +926,15 @@ class queue
                 return self::lpop($key);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * rpop 从右边弹出数据, 并删除数据
-     * 
+     *
      * @param mixed $key
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function rpop($key)
@@ -940,7 +942,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->rpop($key);
             }
@@ -949,7 +951,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -957,15 +959,15 @@ class queue
                 return self::rpop($key);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * lsize 队列长度，同llen
-     * 
+     *
      * @param mixed $key
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function lsize($key)
@@ -973,7 +975,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->lSize($key);
             }
@@ -982,7 +984,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -990,16 +992,16 @@ class queue
                 return self::lsize($key);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * lget 获取数据
-     * 
+     *
      * @param mixed $key
      * @param int $index
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function lget($key, $index = 0)
@@ -1007,7 +1009,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->lget($key, $index);
             }
@@ -1016,7 +1018,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -1024,17 +1026,17 @@ class queue
                 return self::lget($key, $index);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * lRange 获取范围数据
-     * 
+     *
      * @param mixed $key
      * @param mixed $start
      * @param mixed $end
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function lrange($key, $start, $end)
@@ -1042,7 +1044,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->lRange($key, $start, $end);
             }
@@ -1051,7 +1053,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -1059,16 +1061,16 @@ class queue
                 return self::lrange($key, $start, $end);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * rlist 从右边弹出 $length 长度数据，并删除数据
-     * 
+     *
      * @param mixed $key
      * @param mixed $length
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function rlist($key, $length)
@@ -1077,9 +1079,9 @@ class queue
         // 如果队列中有数据
         if ($queue_length > 0)
         {
-            $list = array();
+            $list  = array();
             $count = ($queue_length >= $length) ? $length : $queue_length;
-            for ($i = 0; $i < $count; $i++) 
+            for ($i = 0; $i < $count; $i++)
             {
                 $data = self::rpop($key);
                 if ($data === false)
@@ -1094,16 +1096,16 @@ class queue
         else
         {
             // 没有数据返回NULL
-            return NULL;
+            return null;
         }
     }
 
     /**
      * keys
-     * 
+     *
      * @param mixed $key
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      * 查找符合给定模式的key。
      * KEYS *命中数据库中所有key。
@@ -1118,7 +1120,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->keys($key);
             }
@@ -1127,7 +1129,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -1135,17 +1137,17 @@ class queue
                 return self::keys($key);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
-     * ttl 返回某个KEY的过期时间 
+     * ttl 返回某个KEY的过期时间
      * 正数：剩余多少秒
      * -1：永不超时
      * -2：key不存在
      * @param mixed $key
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function ttl($key)
@@ -1153,7 +1155,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->ttl($key);
             }
@@ -1162,7 +1164,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -1170,16 +1172,16 @@ class queue
                 return self::ttl($key);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * expire 为某个key设置过期时间,同setTimeout
-     * 
+     *
      * @param mixed $key
      * @param mixed $expire
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function expire($key, $expire)
@@ -1187,7 +1189,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->expire($key, $expire);
             }
@@ -1196,7 +1198,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -1204,15 +1206,15 @@ class queue
                 return self::expire($key, $expire);
             }
         }
-        return NULL;
+        return null;
     }
 
     /**
      * exists key值是否存在
-     * 
+     *
      * @param mixed $key
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     public static function exists($key)
@@ -1220,7 +1222,7 @@ class queue
         self::init();
         try
         {
-            if ( self::$links[self::$link_name] )
+            if (self::$links[self::$link_name])
             {
                 return self::$links[self::$link_name]->exists($key);
             }
@@ -1229,7 +1231,7 @@ class queue
         {
             $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
             log::warn($msg);
-            if ($e->getCode() == 0) 
+            if ($e->getCode() == 0)
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
@@ -1242,18 +1244,18 @@ class queue
 
     /**
      * ping 检查当前redis是否存在且是否可以连接上
-     * 
+     *
      * @return void
-     * @author seatle <seatle@foxmail.com> 
+     * @author seatle <seatle@foxmail.com>
      * @created time :2015-12-13 01:05
      */
     //protected static function ping()
     //{
-        //if ( empty (self::$links[self::$link_name]) )
-        //{
-            //return false;
-        //}
-        //return self::$links[self::$link_name]->ping() == '+PONG';
+    //if ( empty (self::$links[self::$link_name]) )
+    //{
+    //return false;
+    //}
+    //return self::$links[self::$link_name]->ping() == '+PONG';
     //}
 
     public static function encode($value)
@@ -1266,5 +1268,3 @@ class queue
         return json_decode($value, true);
     }
 }
-
-

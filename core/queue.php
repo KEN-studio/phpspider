@@ -55,11 +55,23 @@ class queue
         if (empty(self::$links[self::$link_name]))
         {
             self::$links[self::$link_name] = new Redis();
-            if ( ! self::$links[self::$link_name]->connect($config['host'], $config['port'], $config['timeout']))
+            if (strstr($config['host'], '.sock'))
             {
-                self::$error = 'Unable to connect to redis server';
-                unset(self::$links[self::$link_name]);
-                return false;
+                if ( ! self::$links[self::$link_name]->connect($config['host']))
+                {
+                    self::$error = 'Unable to connect to redis server';
+                    unset(self::$links[self::$link_name]);
+                    return false;
+                }
+            }
+            else
+            {
+                if ( ! self::$links[self::$link_name]->connect($config['host'], $config['port'], $config['timeout']))
+                {
+                    self::$error = 'Unable to connect to redis server';
+                    unset(self::$links[self::$link_name]);
+                    return false;
+                }
             }
 
             // 验证
@@ -1267,4 +1279,109 @@ class queue
     {
         return json_decode($value, true);
     }
+
+    /**
+     * 集合操作
+     */
+
+    /**
+     * sadd 将数据压入集合
+     *
+     * @param mixed $key
+     * @param mixed $value
+     * @return void
+     * @author seatle <seatle@foxmail.com>
+     * @created time :2015-12-13 01:05
+     */
+    public static function sadd($key, $value)
+    {
+        self::init();
+        try
+        {
+            if (self::$links[self::$link_name])
+            {
+                return self::$links[self::$link_name]->sadd($key, $value);
+            }
+        }
+        catch (Exception $e)
+        {
+            $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
+            log::warn($msg);
+            if ($e->getCode() == 0)
+            {
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
+                usleep(100000);
+                return self::sadd($key, $value);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * spop 从集合中随机取出数据并移除
+     *
+     * @param mixed $key
+     * @return void
+     * @author seatle <seatle@foxmail.com>
+     * @created time :2015-12-13 01:05
+     */
+    public static function spop($key)
+    {
+        self::init();
+        try
+        {
+            if (self::$links[self::$link_name])
+            {
+                return self::$links[self::$link_name]->spop($key);
+            }
+        }
+        catch (Exception $e)
+        {
+            $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
+            log::warn($msg);
+            if ($e->getCode() == 0)
+            {
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
+                usleep(100000);
+                return self::spop($key);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Redis Scard 命令返回集合中元素的数量。
+     *
+     * @param mixed $key
+     * @return void
+     * @author seatle <seatle@foxmail.com>
+     * @created time :2015-12-13 01:05
+     */
+    public static function scard($key)
+    {
+        self::init();
+        try
+        {
+            if (self::$links[self::$link_name])
+            {
+                return self::$links[self::$link_name]->scard($key);
+            }
+        }
+        catch (Exception $e)
+        {
+            $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
+            log::warn($msg);
+            if ($e->getCode() == 0)
+            {
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
+                usleep(100000);
+                return self::scard($key);
+            }
+        }
+        return null;
+    }
+
 }

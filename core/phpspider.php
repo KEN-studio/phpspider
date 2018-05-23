@@ -589,14 +589,14 @@ class phpspider
         {
             return false;
         }
-        //增加无列表页选项，即所有页面都要抓取内容
+        //增加无列表页选项，即所有页面都要抓取内容，包含列表页
         if (empty(self::$configs['list_url_regexes']) or self::$configs['list_url_regexes'][0] == 'x')
         {
             return false;
         }
 
         //增加泛列表页，即所有页面都是列表页，只抓取链接，不抓取内容
-        if ( ! empty(self::$configs['list_url_regexes']) and self::$configs['list_url_regexes'][0] == '*')
+        if (self::$configs['list_url_regexes'][0] == '*')
         {
             return true;
         }
@@ -637,6 +637,12 @@ class phpspider
         {
             return true;
         }
+        //无内容，泛列表模式，即所有页面都不提取内容
+        if (self::$configs['content_url_regexes'][0] == 'x')
+        {
+            return false;
+        }
+
         if ( ! empty(self::$configs['content_url_regexes']))
         {
             foreach (self::$configs['content_url_regexes'] as $regex)

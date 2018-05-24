@@ -341,7 +341,8 @@ class db
         $fields = self::get_fields($table);
 
         $keys_sql = $vals_sql = array();
-        foreach ($set as $i => $val)
+        $i        = 0;
+        foreach ($set as $val)
         {
             ksort($val);
             $vals = array();
@@ -353,13 +354,14 @@ class db
                     continue;
                 }
                 // 如果是第一个数组，把key当做插入条件
-                if ($i == 0 && $k == 0)
+                if ($i === 0)
                 {
                     $keys_sql[] = "`$k`";
                 }
                 $vals[] = "\"$v\"";
             }
             $vals_sql[] = implode(',', $vals);
+            $i++;
         }
 
         $sql = "Insert Ignore Into `{$table}`(".implode(', ', $keys_sql).') Values ('.implode('), (', $vals_sql).')';

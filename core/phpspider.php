@@ -220,9 +220,9 @@ class phpspider
     public static $max_duration = 0;
 
     /**
-     * 【KEN】单域名最大子域名发现数量 防止掉进蜘蛛池，默认100
+     * 【KEN】单域名最大子域名发现数量 防止掉进蜘蛛池，默认3000（多数大型网站上限）
      */
-    public static $max_sub_num = 100;
+    public static $max_sub_num = 3000;
 
     /**
      * 【KEN】子进程未获取任务，超时退出前，等待计时器
@@ -233,7 +233,7 @@ class phpspider
     /**
      * 【KEN】子进程未获取任务，超时退出前，最大等待时长/秒，全部任务束后，子进程将会等待的时间，以便有缓冲时间，获得新的任务
      */
-    public static $max_stand_by_time = 30;
+    public static $max_stand_by_time = 60;
 
     /**
      * 采集深度
@@ -402,8 +402,8 @@ class phpspider
         $configs['max_fields'] = isset($configs['max_fields']) ? $configs['max_fields'] : 0;
         $configs['export']     = isset($configs['export']) ? $configs['export'] : array();
         //新增参数
-        $configs['max_pages']     = isset($configs['max_pages']) ? $configs['max_pages'] : self::$max_pages;
-        $configs['max_duration']  = isset($configs['max_duration']) ? $configs['max_duration'] : self::$max_duration;
+        $configs['max_pages']         = isset($configs['max_pages']) ? $configs['max_pages'] : self::$max_pages;
+        $configs['max_duration']      = isset($configs['max_duration']) ? $configs['max_duration'] : self::$max_duration;
         $configs['max_sub_num']       = isset($configs['max_sub_num']) ? $configs['max_sub_num'] : self::$max_sub_num;
         $configs['max_stand_by_time'] = isset($configs['max_stand_by_time']) ? $configs['max_stand_by_time'] : self::$max_stand_by_time;
 
@@ -459,11 +459,10 @@ class phpspider
         if ( ! empty(self::$configs['max_sub_num']))
         {
             //抓取到的子域名超过指定数量，就丢掉此域名
-            $domain           = $this->getRootDomain($url, 'root');
-            $sub_domain_count = $this->sub_domain_count($url, $domain);
+            $sub_domain_count = $this->sub_domain_count($url);
             if ($sub_domain_count > self::$configs['max_sub_num'])
             {
-                log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['max_sub_num'].", $url [Skip]");
+                log::debug('Task('.self::$taskid.') subdomin '.$sub_domain_count.' more than '.self::$configs['max_sub_num'].",add_scan_url $url [Skip]");
                 return $status;
             }
         }
@@ -524,12 +523,11 @@ class phpspider
         //限制最大子域名数量
         if ( ! empty(self::$configs['max_sub_num']))
         {
-            //抓取超过100子域名的，就丢掉
-            $domain           = $this->getRootDomain($url, 'root');
-            $sub_domain_count = $this->sub_domain_count($url, $domain);
+            //抓取超过 max_sub_num 子域名的，就丢掉
+            $sub_domain_count = $this->sub_domain_count($url);
             if ($sub_domain_count > self::$configs['max_sub_num'])
             {
-                log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['max_sub_num'].", $url [Skip]");
+                log::debug('Task('.self::$taskid.') subdomin '.$sub_domain_count.' more than '.self::$configs['max_sub_num'].",add_url $url [Skip]");
                 //echo '[on_download_page] ' . $domain . "'s subdomin > 1000 ,Skip!\n";
                 return $status;
             }
@@ -1576,12 +1574,11 @@ class phpspider
             if ( ! empty(self::$configs['max_sub_num']))
             {
                 //抓取子域名超过超过指定值，就丢掉
-                $domain           = $this->getRootDomain($url, 'root');
-                $sub_domain_count = $this->sub_domain_count($url, $domain);
+                $sub_domain_count = $this->sub_domain_count($url);
                 if ($sub_domain_count > self::$configs['max_sub_num'])
                 {
                     unset($urls[$key]);
-                    log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['max_sub_num'].", $url [Skip]");
+                    log::debug('Task('.self::$taskid.') subdomin '.$sub_domain_count.' more than '.self::$configs['max_sub_num'].",get_urls $url [Skip]");
                     continue;
                 }
             }
@@ -3241,49 +3238,40 @@ class phpspider
     {
         if (empty($url))
         {
-            return false;
+            return 0;
         }
         $count = 0;
         if (self::$use_redis)
         {
-            $domain = $this->getRootDomain($url);
+            $domain = $this->getRootDomain($url, 'root');
             if (empty($domain))
             {
-                return false;
+                return 0;
             }
             $count = queue::get($domain);
             if ( ! empty(self::$configs['max_sub_num']) and $count > self::$configs['max_sub_num'])
             {
                 return $count;
             }
-            if ( ! preg_match('/^http/iu', $url))
+     
+            $host = $this->getRootDomain($url, 'host');
+                   if (empty($host))
             {
-                $url = 'http://'.$url;
+                return $count;
             }
-            $key    = 'collect_urls-'.md5($url);
-            $exists = queue::exists($key);
-            // 不存在或者当然URL可重复入
+            if (strlen($host) > 32)
+            {
+                $host = md5($host);
+            }
+            $hostkey = 'sub_d-'.$host;
+            $exists  = queue::exists($hostkey);
             if ( ! $exists)
             {
-                $url_parse = parse_url(strtolower($url));
-                if (empty($url_parse['host']))
-                {
-                    return $count;
-                }
-                $url = $url_parse['host'];
-                if (strlen($url) > 32)
-                {
-                    $url = md5($url);
-                }
-                $key    = 'sub_d-'.$url;
-                $exists = queue::exists($key);
-                if ( ! $exists)
-                {
-                    // 子域名数量加一
-                    $count = queue::incr($domain);
-                    queue::set($key, 1);
-                }
+                // 子域名数量加一
+                $count = queue::incr($domain);
+                queue::set($hostkey, 1);
             }
+
         }
         return $count;
     }

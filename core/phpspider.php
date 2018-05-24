@@ -15,7 +15,7 @@
 // 泛域名抓取特别版 BY KEN
 // ***********
 // * 泛域名设置：domain = array('*')
-// * 增加子域名数量限制 $sub_num = 100
+// * 增加子域名数量限制 $max_sub_num = 100
 //----------------------------------
 
 namespace phpspider\core;
@@ -48,7 +48,7 @@ class phpspider
     /**
      * 爬虫爬取每个网页的时间间隔,0表示不延时, 单位: 毫秒
      */
-    const INTERVAL = 0;
+    const INTERVAL = 100;
 
     /**
      * 爬虫爬取每个网页的超时时间, 单位: 秒
@@ -61,10 +61,10 @@ class phpspider
     const MAX_TRY = 0;
 
     /**
-     * 爬虫爬取网页所使用的浏览器类型: pc、ios、android
+     * 爬虫爬取网页所使用的浏览器类型: pc/Mac、ios、android
      * 默认类型是PC
      */
-    const AGENT_PC      = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36';
+    const AGENT_PC      = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.139 Safari/537.36';
     const AGENT_IOS     = 'Mozilla/5.0 (iPhone; CPU iPhone OS 9_3_3 like Mac OS X) AppleWebKit/601.1.46 (KHTML, like Gecko) Version/9.0 Mobile/13G34 Safari/601.1';
     const AGENT_ANDROID = 'Mozilla/5.0 (Linux; U; Android 6.0.1;zh_cn; Le X820 Build/FEXCNFN5801507014S) AppleWebKit/537.36 (KHTML, like Gecko)Version/4.0 Chrome/49.0.0.0 Mobile Safari/537.36 EUI Browser/5.8.015S';
 
@@ -200,24 +200,40 @@ class phpspider
     public static $fields_num = 0;
 
     /**
-     * 【KEN】提取到的页面数 结构为 domain => number
+     * 【KEN】提取到的页面数按域名计数容器 结构为 domain => number
      */
     public static $pages_num = array();
 
     /**
-     * 【KEN】花费的抓取时长 结构为 domain => number
+     * 【KEN】单域名允许抓取的最大页面数,0为不限制
+     */
+    public static $max_pages = 0;
+
+    /**
+     * 【KEN】花费的抓取时长计数容器 结构为 domain => number
      */
     public static $duration = array();
 
     /**
+     * 【KEN】单域名允许抓取的最大时长，单位秒,0为不限制
+     */
+    public static $max_duration = 0;
+
+    /**
      * 【KEN】单域名最大子域名发现数量 防止掉进蜘蛛池，默认100
      */
-    public static $sub_num = 100;
+    public static $max_sub_num = 100;
 
     /**
      * 【KEN】子进程未获取任务，超时退出前，等待计时器
      */
+
     public static $stand_by_time = 0;
+
+    /**
+     * 【KEN】子进程未获取任务，超时退出前，最大等待时长/秒，全部任务束后，子进程将会等待的时间，以便有缓冲时间，获得新的任务
+     */
+    public static $max_stand_by_time = 30;
 
     /**
      * 采集深度
@@ -385,6 +401,11 @@ class phpspider
         $configs['max_depth']  = isset($configs['max_depth']) ? $configs['max_depth'] : 0;
         $configs['max_fields'] = isset($configs['max_fields']) ? $configs['max_fields'] : 0;
         $configs['export']     = isset($configs['export']) ? $configs['export'] : array();
+        //新增参数
+        $configs['max_pages']     = isset($configs['max_pages']) ? $configs['max_pages'] : self::$max_pages;
+        $configs['max_duration']  = isset($configs['max_duration']) ? $configs['max_duration'] : self::$max_duration;
+        $configs['max_sub_num']       = isset($configs['max_sub_num']) ? $configs['max_sub_num'] : self::$max_sub_num;
+        $configs['max_stand_by_time'] = isset($configs['max_stand_by_time']) ? $configs['max_stand_by_time'] : self::$max_stand_by_time;
 
         // csv、sql、db
         self::$export_type  = isset($configs['export']['type']) ? $configs['export']['type'] : '';
@@ -435,14 +456,14 @@ class phpspider
         // 投递状态
         $status = false;
         //限制最大子域名数量
-        if ( ! empty(self::$sub_num))
+        if ( ! empty(self::$configs['max_sub_num']))
         {
             //抓取到的子域名超过指定数量，就丢掉此域名
             $domain           = $this->getRootDomain($url, 'root');
             $sub_domain_count = $this->sub_domain_count($url, $domain);
-            if ($sub_domain_count > self::$sub_num)
+            if ($sub_domain_count > self::$configs['max_sub_num'])
             {
-                log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['sub_num'].", $url [Skip]");
+                log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['max_sub_num'].", $url [Skip]");
                 return $status;
             }
         }
@@ -501,14 +522,14 @@ class phpspider
         // 投递状态
         $status = false;
         //限制最大子域名数量
-        if ( ! empty(self::$sub_num))
+        if ( ! empty(self::$configs['max_sub_num']))
         {
             //抓取超过100子域名的，就丢掉
             $domain           = $this->getRootDomain($url, 'root');
             $sub_domain_count = $this->sub_domain_count($url, $domain);
-            if ($sub_domain_count > self::$sub_num)
+            if ($sub_domain_count > self::$configs['max_sub_num'])
             {
-                log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['sub_num'].", $url [Skip]");
+                log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['max_sub_num'].", $url [Skip]");
                 //echo '[on_download_page] ' . $domain . "'s subdomin > 1000 ,Skip!\n";
                 return $status;
             }
@@ -1071,10 +1092,10 @@ class phpspider
 
             //退出前计时，等待1分钟，如果获取不到新任务，再退出
             self::$stand_by_time = 0;
-            while (self::$stand_by_time < 300)
+            while (self::$stand_by_time < self::$configs['max_stand_by_time'])
             {
                 $this->do_collect_page();
-                log::warn('Task('.self::$taskid.') Stand By '.self::$stand_by_time.' s');
+                log::warn('Task('.self::$taskid.') Stand By '.self::$stand_by_time.'/'.self::$configs['max_stand_by_time'].' s');
                 self::$stand_by_time++;
                 sleep(1);
             }
@@ -1552,15 +1573,15 @@ class phpspider
         foreach ($urls as $key => $url)
         {
             //限制最大子域名数量
-            if ( ! empty(self::$sub_num))
+            if ( ! empty(self::$configs['max_sub_num']))
             {
                 //抓取子域名超过超过指定值，就丢掉
                 $domain           = $this->getRootDomain($url, 'root');
                 $sub_domain_count = $this->sub_domain_count($url, $domain);
-                if ($sub_domain_count > self::$sub_num)
+                if ($sub_domain_count > self::$configs['max_sub_num'])
                 {
                     unset($urls[$key]);
-                    log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['sub_num'].", $url [Skip]");
+                    log::debug('Task('.self::$taskid.') subdomin more than '.self::$configs['max_sub_num'].", $url [Skip]");
                     continue;
                 }
             }
@@ -1698,7 +1719,7 @@ class phpspider
         }
         // ./1234.html、../1234.html 这种类型的
         elseif ($url[0] == '.')
-        { 
+        {
             if ( ! isset($url[2]))
             {
                 return false;
@@ -2565,11 +2586,11 @@ class phpspider
                     //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
                     if (isset(self::$configs['queue_order']) and self::$configs['queue_order'] == 'rand')
                     {
-                        queue::sadd('collect_queue', $link);//无序集合
+                        queue::sadd('collect_queue', $link); //无序集合
                     }
                     else
                     {
-                        queue::rpush('collect_queue', $link);//有序列表
+                        queue::rpush('collect_queue', $link); //有序列表
                     }
                     $status = true;
                 }
@@ -3231,7 +3252,7 @@ class phpspider
                 return false;
             }
             $count = queue::get($domain);
-            if ( ! empty(self::$sub_num) and $count > self::$sub_num)
+            if ( ! empty(self::$configs['max_sub_num']) and $count > self::$configs['max_sub_num'])
             {
                 return $count;
             }

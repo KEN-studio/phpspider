@@ -35,7 +35,7 @@ class requests
 
     /* user definable vars */
 
-    public static $timeout         = 5;
+    public static $timeout         = 15;
     public static $encoding        = null;
     public static $input_encoding  = null;
     public static $output_encoding = null;
@@ -488,7 +488,7 @@ class requests
             }
             else
             {
-                curl_setopt(self::$ch, CURLOPT_CONNECTTIMEOUT, self::$timeout);
+                curl_setopt(self::$ch, CURLOPT_CONNECTTIMEOUT, ceil(self::$timeout / 2));
                 curl_setopt(self::$ch, CURLOPT_TIMEOUT, self::$timeout);
             }
             // 在多线程处理场景下使用超时选项时，会忽略signals对应的处理函数，但是无耐的是还有小概率的crash情况发生

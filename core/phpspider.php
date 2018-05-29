@@ -12,7 +12,7 @@
 //----------------------------------
 // PHPSpider核心类文件
 // ***********
-// 泛域名抓取特别版 BY KEN
+// 泛域名抓取优化版 BY KEN a-site@foxmail.com
 // ***********
 // * 泛域名设置：domain = array('*')
 // * 增加子域名数量限制 $max_sub_num = 100
@@ -236,6 +236,12 @@ class phpspider
     public static $max_stand_by_time = 60;
 
     /**
+     * 【KEN】每个主机并发上限，降低对方网站流量压力和减少被阻挡概率，建议值 6
+     */
+    public static $max_task_per_host     = 0;
+    public static $task_per_host_counter = array(); //计数容器
+
+    /**
      * 采集深度
      */
     public static $depth_num = 0;
@@ -401,11 +407,13 @@ class phpspider
         $configs['max_depth']  = isset($configs['max_depth']) ? $configs['max_depth'] : 0;
         $configs['max_fields'] = isset($configs['max_fields']) ? $configs['max_fields'] : 0;
         $configs['export']     = isset($configs['export']) ? $configs['export'] : array();
-        //新增参数
+        //新增参数 BY KEN <a-site@foxmail.com>
+        $configs['queue_order']       = isset($configs['queue_order']) ? $configs['queue_order'] : 'list';
         $configs['max_pages']         = isset($configs['max_pages']) ? $configs['max_pages'] : self::$max_pages;
         $configs['max_duration']      = isset($configs['max_duration']) ? $configs['max_duration'] : self::$max_duration;
         $configs['max_sub_num']       = isset($configs['max_sub_num']) ? $configs['max_sub_num'] : self::$max_sub_num;
         $configs['max_stand_by_time'] = isset($configs['max_stand_by_time']) ? $configs['max_stand_by_time'] : self::$max_stand_by_time;
+        $configs['max_task_per_host'] = isset($configs['max_task_per_host']) ? $configs['max_task_per_host'] : self::$max_task_per_host;
 
         // csv、sql、db
         self::$export_type  = isset($configs['export']['type']) ? $configs['export']['type'] : '';
@@ -462,7 +470,7 @@ class phpspider
             $sub_domain_count = $this->sub_domain_count($url);
             if ($sub_domain_count > self::$configs['max_sub_num'])
             {
-                log::debug('Task('.self::$taskid.') subdomin '.$sub_domain_count.' more than '.self::$configs['max_sub_num'].",add_scan_url $url [Skip]");
+                log::debug('Task('.self::$taskid.') subdomin = '.$sub_domain_count.' more than '.self::$configs['max_sub_num'].",add_scan_url $url [Skip]");
                 return $status;
             }
         }
@@ -527,7 +535,7 @@ class phpspider
             $sub_domain_count = $this->sub_domain_count($url);
             if ($sub_domain_count > self::$configs['max_sub_num'])
             {
-                log::debug('Task('.self::$taskid.') subdomin '.$sub_domain_count.' more than '.self::$configs['max_sub_num'].",add_url $url [Skip]");
+                log::debug('Task('.self::$taskid.') subdomin = '.$sub_domain_count.' more than '.self::$configs['max_sub_num'].",add_url $url [Skip]");
                 //echo '[on_download_page] ' . $domain . "'s subdomin > 1000 ,Skip!\n";
                 return $status;
             }
@@ -1233,7 +1241,7 @@ class phpspider
             $domain_pages_num = $this->incr_pages_num($url);
             if ($domain_pages_num > self::$configs['max_pages'])
             {
-                log::debug('Task('.self::$taskid.') pages more than '.self::$configs['max_pages'].", $url [Skip]");
+                log::debug('Task('.self::$taskid.') pages = '.$domain_pages_num.' more than '.self::$configs['max_pages'].", $url [Skip]");
                 return false;
             }
         }
@@ -1244,7 +1252,20 @@ class phpspider
             $domain_duration = $this->get_duration_num($url);
             if ($domain_duration > self::$configs['max_duration'])
             {
-                log::debug('Task('.self::$taskid.') duration more than '.self::$configs['max_duration'].", $url [Skip]");
+                log::debug('Task('.self::$taskid.') duration = '.$domain_duration.' more than '.self::$configs['max_duration'].", $url [Skip]");
+                return false;
+            }
+        }
+
+        //当前 host 并发检测 2018-5 BY KEN <a-site@foxmail.com>
+        if (self::$configs['max_task_per_host'] > 0)
+        {
+            $task_per_host = $this->incr_task_per_host($url);
+            if ($task_per_host >= self::$configs['max_task_per_host'])
+            {
+                log::warn('Task('.self::$taskid.') task_per_host = '.$task_per_host.'/'.self::$configs['max_task_per_host'].' ; URL: '.$url.' will be retry later...');
+                $this->queue_lpush($link); //放回队列
+                $task_per_host = $this->incr_task_per_host($url, 'decr'); //计数恢复原值
                 return false;
             }
         }
@@ -1410,9 +1431,6 @@ class phpspider
     public function request_url($url, $link = array())
     {
         $time_start = microtime(true);
-
-        //$url = "http://www.qiushibaike.com/article/117568316";
-
         // 设置了编码就不要让requests去判断了
         if (isset(self::$configs['input_encoding']))
         {
@@ -1453,6 +1471,12 @@ class phpspider
         }
 
         $http_code = requests::$status_code;
+
+        //请求完成 host 的并发计数减 1 2018-5 BY KEN <a-site@foxmail.com>
+        if (self::$configs['max_task_per_host'] > 0)
+        {
+            $this->incr_task_per_host($url, 'decr');
+        }
 
         if ($this->on_status_code)
         {
@@ -1578,7 +1602,7 @@ class phpspider
                 if ($sub_domain_count > self::$configs['max_sub_num'])
                 {
                     unset($urls[$key]);
-                    log::debug('Task('.self::$taskid.') subdomin '.$sub_domain_count.' more than '.self::$configs['max_sub_num'].",get_urls $url [Skip]");
+                    log::debug('Task('.self::$taskid.') subdomin = '.$sub_domain_count.' more than '.self::$configs['max_sub_num'].",get_urls $url [Skip]");
                     continue;
                 }
             }
@@ -1674,7 +1698,7 @@ class phpspider
             return false;
         }
         // 排除没有被解析成功的语言标签
-        if (substr($url, 0, 3) == '<%=' or substr($url, 0, 1) == '{')
+        if (substr($url, 0, 3) == '<%=' or substr($url, 0, 1) == '{' or substr($url, 0, 2) == ' {')
         {
             return false;
         }
@@ -2107,7 +2131,7 @@ class phpspider
         {
             foreach ($fields as $fieldname => $data)
             {
-                $pattern = "/<img.*src=[\"']{0,1}(.*)[\"']{0,1}[> \r\n\t]{1,}/isU";
+                $pattern = "/<img\s+.*?src=[\"']{0,1}(.*)[\"']{0,1}[> \r\n\t]{1,}/isu";
                 /*$pattern = "/<img.*?src=[\'|\"](.*?(?:[\.gif|\.jpg|\.jpeg|\.png]))[\'|\"].*?[\/]?>/i"; */
                 // 在抽取到field内容之后调用, 对其中包含的img标签进行回调处理
                 if ($this->on_handle_img && preg_match($pattern, $data))
@@ -2517,8 +2541,8 @@ class phpspider
                     queue::set($key, time());
                     // 入队列
                     $link = json_encode($link);
-                    //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
-                    if (isset(self::$configs['queue_order']) and self::$configs['queue_order'] == 'rand')
+                    //根据采集设置为顺序采集还是随机采集，使用列表或集合对象 2018-5 BY KEN <a-site@foxmail.com>
+                    if (self::$configs['queue_order'] == 'rand')
                     {
                         queue::sadd('collect_queue', $link);
                     }
@@ -2580,8 +2604,8 @@ class phpspider
                     queue::set($key, time());
                     // 入队列
                     $link = json_encode($link);
-                    //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
-                    if (isset(self::$configs['queue_order']) and self::$configs['queue_order'] == 'rand')
+                    //根据采集设置为顺序采集还是随机采集，使用列表或集合对象 2018-5 BY KEN <a-site@foxmail.com>
+                    if (self::$configs['queue_order'] == 'rand')
                     {
                         queue::sadd('collect_queue', $link); //无序集合
                     }
@@ -2624,7 +2648,7 @@ class phpspider
         if (self::$use_redis)
         {
             //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
-            if (isset(self::$configs['queue_order']) and self::$configs['queue_order'] == 'rand')
+            if (self::$configs['queue_order'] == 'rand')
             {
                 $link = queue::spop('collect_queue');
             }
@@ -2653,7 +2677,7 @@ class phpspider
         if (self::$use_redis)
         {
             //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
-            if (isset(self::$configs['queue_order']) and self::$configs['queue_order'] == 'rand')
+            if (self::$configs['queue_order'] == 'rand')
             {
                 $link = queue::spop('collect_queue');
             }
@@ -2682,7 +2706,7 @@ class phpspider
         if (self::$use_redis)
         {
             //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
-            if (isset(self::$configs['queue_order']) and self::$configs['queue_order'] == 'rand')
+            if (self::$configs['queue_order'] == 'rand')
             {
                 $lsize = queue::scard('collect_queue');
             }
@@ -2795,8 +2819,8 @@ class phpspider
      * 提取到的pages数目加一，用于限制单域名采集页数上限
      *
      * @return void
-     * @author seatle <seatle@foxmail.com>
-     * @created time :2018-02-13 18:59
+     * @author KEN <a-site@foxmail.com>
+     * @created time :2018-05
      */
     public function incr_pages_num($url = '')
     {
@@ -2821,11 +2845,11 @@ class phpspider
     }
 
     /**
-     * 超过1秒的慢速采集时间汇总，用于限制单域名总采集时间上限
+     * 超过1秒的慢速采集时间计数，用于限制单域名总采集时间上限
      *
      * @return void
-     * @author seatle <seatle@foxmail.com>
-     * @created time :2018-02-13 18:59
+     * @author KEN <a-site@foxmail.com>
+     * @created time :2018-05
      */
     public function incr_duration_num($url = '', $time_run = 1)
     {
@@ -2843,18 +2867,25 @@ class phpspider
         }
         else
         {
-            self::$duration[$domain]++;
+            if (empty(self::$duration[$domain]))
+            {
+                self::$duration[$domain] = $time_run;
+            }
+            else
+            {
+                self::$duration[$domain] += $time_run;
+            }
             $duration[$domain] = self::$duration[$domain];
         }
         return $duration[$domain];
     }
 
     /**
-     * 读取单域名总慢速采集时间
+     * 读取单域名总慢速采集（响应超过1秒）的时间
      *
      * @return void
-     * @author seatle <seatle@foxmail.com>
-     * @created time :2016-09-23 17:13
+     * @author KEN <a-site@foxmail.com>
+     * @created time :2018-04
      */
     public function get_duration_num($url = '')
     {
@@ -2875,6 +2906,57 @@ class phpspider
             $duration[$domain] = self::$duration[$domain];
         }
         return $duration[$domain] ? $duration[$domain] : 0;
+    }
+
+    /**
+     * 单 host 当前并发计数
+     * @return int
+     * @author KEN <a-site@foxmail.com>
+     * @created time :2018-05-28 16:40
+     */
+    public function incr_task_per_host($url = '', $type = 'incr')
+    {
+        if (empty($url))
+        {
+            return false;
+        }
+        $domain = $this->getRootDomain($url, 'host');
+        if (empty($domain))
+        {
+            return false;
+        }
+        if (self::$use_redis)
+        {
+            if ($type == 'decr')
+            {
+                $task_per_host_counter[$domain] = queue::incr('task_per_host:'.$domain);
+            }
+            else
+            {
+                $task_per_host_counter[$domain] = queue::incr('task_per_host:'.$domain);
+            }
+        }
+        else
+        {
+
+            if (empty(self::$task_per_host_counter[$domain]))
+            {
+                self::$task_per_host_counter[$domain] = 1;
+            }
+            else
+            {
+                if ($type == 'decr')
+                {
+                    self::$task_per_host_counter[$domain]--;
+                }
+                else
+                {
+                    self::$task_per_host_counter[$domain]++;
+                }
+            }
+            $task_per_host_counter[$domain] = self::$task_per_host_counter[$domain];
+        }
+        return $task_per_host_counter[$domain];
     }
 
     /**
@@ -3253,9 +3335,9 @@ class phpspider
             {
                 return $count;
             }
-     
+
             $host = $this->getRootDomain($url, 'host');
-                   if (empty($host))
+            if (empty($host))
             {
                 return $count;
             }
@@ -3283,27 +3365,36 @@ class phpspider
         {
             return $url;
         }
-        if (preg_match_all('/(http[s]?:\/\/[\p{Han}a-zA-Z0-9\-&\.\/]*)/iu', $url, $arr))
-        {
-            $url = $arr['0']['0'];
-        }
-        #列举域名中固定元素
-        $state_domain = array('com', 'edu', 'gov', 'int', 'mil', 'net', 'org', 'biz', 'info', 'pro', 'name', 'coop', 'aero', 'xxx', 'idv', 'mobi', 'cc', 'me', 'jp', 'uk', 'ws', 'eu', 'pw', 'kr', 'io', 'us', 'cn', 'al', 'dz', 'af', 'ar', 'ae', 'aw', 'om', 'az', 'eg', 'et', 'ie', 'ee', 'ad', 'ao', 'ai', 'ag', 'at', 'au', 'mo', 'bb', 'pg', 'bs', 'pk', 'py', 'ps', 'bh', 'pa', 'br', 'by', 'bm', 'bg', 'mp', 'bj', 'be', 'is', 'pr', 'ba', 'pl', 'bo', 'bz', 'bw', 'bt', 'bf', 'bi', 'bv', 'kp', 'gq', 'dk', 'de', 'tl', 'tp', 'tg', 'dm', 'do', 'ru', 'ec', 'er', 'fr', 'fo', 'pf', 'gf', 'tf', 'va', 'ph', 'fj', 'fi', 'cv', 'fk', 'gm', 'cg', 'cd', 'co', 'cr', 'gg', 'gd', 'gl', 'ge', 'cu', 'gp', 'gu', 'gy', 'kz', 'ht', 'nl', 'an', 'hm', 'hn', 'ki', 'dj', 'kg', 'gn', 'gw', 'ca', 'gh', 'ga', 'kh', 'cz', 'zw', 'cm', 'qa', 'ky', 'km', 'ci', 'kw', 'hr', 'ke', 'ck', 'lv', 'ls', 'la', 'lb', 'lt', 'lr', 'ly', 'li', 're', 'lu', 'rw', 'ro', 'mg', 'im', 'mv', 'mt', 'mw', 'my', 'ml', 'mk', 'mh', 'mq', 'yt', 'mu', 'mr', 'um', 'as', 'vi', 'mn', 'ms', 'bd', 'pe', 'fm', 'mm', 'md', 'ma', 'mc', 'mz', 'mx', 'nr', 'np', 'ni', 'ne', 'ng', 'nu', 'no', 'nf', 'na', 'za', 'aq', 'gs', 'pn', 'pt', 'se', 'ch', 'sv', 'yu', 'sl', 'sn', 'cy', 'sc', 'sa', 'cx', 'st', 'sh', 'kn', 'lc', 'sm', 'pm', 'vc', 'lk', 'sk', 'si', 'sj', 'sz', 'sd', 'sr', 'sb', 'so', 'tj', 'tw', 'th', 'tz', 'to', 'tc', 'tt', 'tn', 'tv', 'tr', 'tm', 'tk', 'wf', 'vu', 'gt', 've', 'bn', 'ug', 'ua', 'uy', 'uz', 'es', 'eh', 'gr', 'hk', 'sg', 'nc', 'nz', 'hu', 'sy', 'jm', 'am', 'ac', 'ye', 'iq', 'ir', 'il', 'it', 'in', 'id', 'vg', 'jo', 'vn', 'zm', 'je', 'td', 'gi', 'cl', 'cf', 'yr', 'arpa', 'museum', 'asia', 'ax', 'bl', 'bq', 'cat', 'cw', 'gb', 'jobs', 'mf', 'rs', 'su', 'sx', 'tel', 'travel', 'shop', 'ltd', 'store', 'vip', '网店', '中国', '公司', '网络', 'co.il', 'co.nz', 'co.uk', 'me.uk', 'org.uk', 'com.sb', '在线', '中文网', '移动', 'wang', 'club', 'ren', 'top', 'website', 'cool', 'company', 'city', 'email', 'market', 'software', 'ninja', '我爱你', 'bike', 'today', 'life', 'space', 'pub', 'site', 'help', 'link', 'photo', 'video', 'click', 'pics', 'sexy', 'audio', 'gift', 'tech', '网址', 'online', 'win', 'download', 'party', 'bid', 'loan', 'date', 'trade', 'red', 'blue', 'pink', 'poker', 'green', 'farm', 'zone', 'guru', 'tips', 'land', 'care', 'camp', 'cab', 'cash', 'limo', 'toys', 'tax', 'town', 'fish', 'fund', 'fail', 'house', 'shoes', 'media', 'guide', 'tools', 'solar', 'watch', 'cheap', 'rocks', 'news', 'live', 'lawyer', 'host', 'wiki', 'ink', 'design', 'lol', 'hiphop', 'hosting', 'diet', 'flowers', 'car', 'cars', 'auto', 'mom', 'cq', 'he', 'nm', 'ln', 'jl', 'hl', 'js', 'zj', 'ah', 'jx', 'ha', 'hb', 'gx', 'hi', 'gz', 'yn', 'xz', 'qh', 'nx', 'xj', 'xyz', 'xin', 'science', 'press', 'band', 'engineer', 'social', 'studio', 'work', 'game', 'kim', 'games', 'group', '集团');
-        if ( ! preg_match('/^http[s]?/is', $url))
+        $url = trim($url);
+        if ( ! preg_match('/^http/i', $url))
         {
             $url = 'http://'.$url;
         }
-        $res           = '';
-        $res['scheme'] = '';
-        $res['host']   = '';
-        $res['path']   = '';
-        $res['name']   = '';
-        $res['domain'] = '';
-        $url_parse     = parse_url(strtolower($url));
+        //截取限定字符
+        if (preg_match_all('/(^https?:\/\/[\p{Han}a-zA-Z0-9\-\.\/]+)/iu', $url, $arr))
+        {
+            $url = $arr['0']['0'];
+        }
+        $url_parse = parse_url(strtolower($url));
         if (empty($url_parse['host']))
         {
             return '';
         }
+        //host判断快速返回
+        if ($type == 'host')
+        {
+            return $url_parse['host'];
+        }
+
+        //结束数组初始化
+        $res = array(
+            'scheme' => '',
+            'host'   => '',
+            'path'   => '',
+            'name'   => '',
+            'domain' => '',
+        );
+
         $urlarr        = explode('.', $url_parse['host']);
         $count         = count($urlarr);
         $res['scheme'] = $url_parse['scheme'];
@@ -3312,6 +3403,8 @@ class phpspider
         {
             $res['path'] = $url_parse['path'];
         }
+        #列举域名中固定元素
+        $state_domain = array('com', 'edu', 'gov', 'int', 'mil', 'net', 'org', 'biz', 'info', 'pro', 'name', 'coop', 'aero', 'xxx', 'idv', 'mobi', 'cc', 'me', 'jp', 'uk', 'ws', 'eu', 'pw', 'kr', 'io', 'us', 'cn', 'al', 'dz', 'af', 'ar', 'ae', 'aw', 'om', 'az', 'eg', 'et', 'ie', 'ee', 'ad', 'ao', 'ai', 'ag', 'at', 'au', 'mo', 'bb', 'pg', 'bs', 'pk', 'py', 'ps', 'bh', 'pa', 'br', 'by', 'bm', 'bg', 'mp', 'bj', 'be', 'is', 'pr', 'ba', 'pl', 'bo', 'bz', 'bw', 'bt', 'bf', 'bi', 'bv', 'kp', 'gq', 'dk', 'de', 'tl', 'tp', 'tg', 'dm', 'do', 'ru', 'ec', 'er', 'fr', 'fo', 'pf', 'gf', 'tf', 'va', 'ph', 'fj', 'fi', 'cv', 'fk', 'gm', 'cg', 'cd', 'co', 'cr', 'gg', 'gd', 'gl', 'ge', 'cu', 'gp', 'gu', 'gy', 'kz', 'ht', 'nl', 'an', 'hm', 'hn', 'ki', 'dj', 'kg', 'gn', 'gw', 'ca', 'gh', 'ga', 'kh', 'cz', 'zw', 'cm', 'qa', 'ky', 'km', 'ci', 'kw', 'hr', 'ke', 'ck', 'lv', 'ls', 'la', 'lb', 'lt', 'lr', 'ly', 'li', 're', 'lu', 'rw', 'ro', 'mg', 'im', 'mv', 'mt', 'mw', 'my', 'ml', 'mk', 'mh', 'mq', 'yt', 'mu', 'mr', 'um', 'as', 'vi', 'mn', 'ms', 'bd', 'pe', 'fm', 'mm', 'md', 'ma', 'mc', 'mz', 'mx', 'nr', 'np', 'ni', 'ne', 'ng', 'nu', 'no', 'nf', 'na', 'za', 'aq', 'gs', 'pn', 'pt', 'se', 'ch', 'sv', 'yu', 'sl', 'sn', 'cy', 'sc', 'sa', 'cx', 'st', 'sh', 'kn', 'lc', 'sm', 'pm', 'vc', 'lk', 'sk', 'si', 'sj', 'sz', 'sd', 'sr', 'sb', 'so', 'tj', 'tw', 'th', 'tz', 'to', 'tc', 'tt', 'tn', 'tv', 'tr', 'tm', 'tk', 'wf', 'vu', 'gt', 've', 'bn', 'ug', 'ua', 'uy', 'uz', 'es', 'eh', 'gr', 'hk', 'sg', 'nc', 'nz', 'hu', 'sy', 'jm', 'am', 'ac', 'ye', 'iq', 'ir', 'il', 'it', 'in', 'id', 'vg', 'jo', 'vn', 'zm', 'je', 'td', 'gi', 'cl', 'cf', 'yr', 'arpa', 'museum', 'asia', 'ax', 'bl', 'bq', 'cat', 'cw', 'gb', 'jobs', 'mf', 'rs', 'su', 'sx', 'tel', 'travel', 'shop', 'ltd', 'store', 'vip', '网店', '中国', '公司', '网络', 'co.il', 'co.nz', 'co.uk', 'me.uk', 'org.uk', 'com.sb', '在线', '中文网', '移动', 'wang', 'club', 'ren', 'top', 'website', 'cool', 'company', 'city', 'email', 'market', 'software', 'ninja', '我爱你', 'bike', 'today', 'life', 'space', 'pub', 'site', 'help', 'link', 'photo', 'video', 'click', 'pics', 'sexy', 'audio', 'gift', 'tech', '网址', 'online', 'win', 'download', 'party', 'bid', 'loan', 'date', 'trade', 'red', 'blue', 'pink', 'poker', 'green', 'farm', 'zone', 'guru', 'tips', 'land', 'care', 'camp', 'cab', 'cash', 'limo', 'toys', 'tax', 'town', 'fish', 'fund', 'fail', 'house', 'shoes', 'media', 'guide', 'tools', 'solar', 'watch', 'cheap', 'rocks', 'news', 'live', 'lawyer', 'host', 'wiki', 'ink', 'design', 'lol', 'hiphop', 'hosting', 'diet', 'flowers', 'car', 'cars', 'auto', 'mom', 'cq', 'he', 'nm', 'ln', 'jl', 'hl', 'js', 'zj', 'ah', 'jx', 'ha', 'hb', 'gx', 'hi', 'gz', 'yn', 'xz', 'qh', 'nx', 'xj', 'xyz', 'xin', 'science', 'press', 'band', 'engineer', 'social', 'studio', 'work', 'game', 'kim', 'games', 'group', '集团');
         if ($count <= 2)
         {
             #当域名直接根形式不存在host部分直接输出
@@ -3331,6 +3424,13 @@ class phpspider
             $last_2        = array_pop($urlarr);
             $res['domain'] = $last_1.'.'.$last; //默认为n.com形式
             $res['name']   = $last_2;
+
+            //排除非标准 ltd 域名
+            if ( ! in_array($last, $state_domain))
+            {
+                return false;
+            }
+
             if (in_array($last, $state_domain))
             {
                 $res['domain'] = $last_1.'.'.$last; //n.com形式
@@ -3352,12 +3452,8 @@ class phpspider
                 $res['tld']    = $last;
             }
         }
-        //排除未收录域名
-        if ( ! in_array($last, $state_domain))
-        {
-            return false;
-        }
-        //检测和验证返回的是不是域名
+
+        //检测和验证返回的是不是域名格式
         if ( ! empty($res['domain']) and preg_match('/^([\p{Han}a-zA-Z0-9])+([\p{Han}a-zA-Z0-9\-])*\.[a-zA-Z\.\p{Han}]+$/iu', $res['domain']))
         {
             if ($type == 'arr')

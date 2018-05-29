@@ -236,7 +236,7 @@ class phpspider
     public static $max_stand_by_time = 60;
 
     /**
-     * 【KEN】每个主机并发上限，降低对方网站流量压力和减少被阻挡概率，建议值 6
+     * 【KEN】每个主机并发上限，降低对方网站流量压力和减少被阻挡概率，建议值 6 ，须与 queue_order = rand 一起使用
      */
     public static $max_task_per_host     = 0;
     public static $task_per_host_counter = array(); //计数容器
@@ -408,12 +408,20 @@ class phpspider
         $configs['max_fields'] = isset($configs['max_fields']) ? $configs['max_fields'] : 0;
         $configs['export']     = isset($configs['export']) ? $configs['export'] : array();
         //新增参数 BY KEN <a-site@foxmail.com>
-        $configs['queue_order']       = isset($configs['queue_order']) ? $configs['queue_order'] : 'list';
         $configs['max_pages']         = isset($configs['max_pages']) ? $configs['max_pages'] : self::$max_pages;
         $configs['max_duration']      = isset($configs['max_duration']) ? $configs['max_duration'] : self::$max_duration;
         $configs['max_sub_num']       = isset($configs['max_sub_num']) ? $configs['max_sub_num'] : self::$max_sub_num;
         $configs['max_stand_by_time'] = isset($configs['max_stand_by_time']) ? $configs['max_stand_by_time'] : self::$max_stand_by_time;
         $configs['max_task_per_host'] = isset($configs['max_task_per_host']) ? $configs['max_task_per_host'] : self::$max_task_per_host;
+        //启用 host并发上限时，队列参数默认为随机
+        if ($configs['max_task_per_host'] > 0 and ! isset($configs['queue_order']))
+        {
+            $configs['queue_order'] = 'rand';
+        }
+        else
+        {
+            $configs['queue_order'] = isset($configs['queue_order']) ? $configs['queue_order'] : 'list';
+        }
 
         // csv、sql、db
         self::$export_type  = isset($configs['export']['type']) ? $configs['export']['type'] : '';

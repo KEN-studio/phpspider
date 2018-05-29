@@ -67,11 +67,12 @@ $configs = array(
             'required' => true
         ),
     ),
-    //新增参数 针对全网泛爬
-	'sub_num' => 1000, //限制最大子域名数量
-	'max_pages' => 10000, //限制单域名最大抓取页面数量
-	'max_duration' => 10000 * 7, //限制单域名慢速抓取最大时长 10000页 x 300秒
-	'queue_order' => 'rand', //泛抓取时请开始此项，队列抓取顺序 随机抽取：rand，正常先进先出：normal 或留空
+    //新增参数
+	'max_sub_num'	=> 3000, //限制最大子域名数量
+	'max_pages'	=> 100000, //限制单域名最大抓取页面数量
+	'max_duration'	=> 10000 * 7, //限制单域名慢速抓取最大耗时 10000页 x 7秒
+	'queue_order'	=> 'rand', //泛抓取时请开始此项，队列抓取顺序 随机抽取：rand，正常先进先出：normal/list 或留空
+	'max_task_per_host'	=> 6, //每个目标主机并发上限
 
 );
 $spider = new phpspider($configs);

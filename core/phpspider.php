@@ -1294,12 +1294,15 @@ class phpspider
         //当前 host 并发检测 2018-5 BY KEN <a-site@foxmail.com>
         if (self::$configs['max_task_per_host'] > 0)
         {
-            $task_per_host = $this->incr_task_per_host($url);
-            if ($task_per_host >= self::$configs['max_task_per_host'])
+            $task_per_host = $this->get_task_per_host_num($url);
+            if ($task_per_host < self::$configs['max_task_per_host'])
             {
-                log::warn('Task('.self::$taskid.') task_per_host = '.$task_per_host.'/'.self::$configs['max_task_per_host'].' ; URL: '.$url.' will be retry later...');
+                $task_per_host = $this->incr_task_per_host($url);
+            }
+            else
+            {
+                log::warn('Task('.self::$taskid.') task_per_host = '.$task_per_host.' > '.self::$configs['max_task_per_host'].' ; URL: '.$url.' will be retry later...');
                 $this->queue_lpush($link); //放回队列
-                $task_per_host = $this->incr_task_per_host($url, 'decr'); //计数恢复原值
                 return false;
             }
         }
@@ -2991,6 +2994,29 @@ class phpspider
             $task_per_host_counter[$domain] = self::$task_per_host_counter[$domain];
         }
         return $task_per_host_counter[$domain];
+    }
+
+    //获取url所属 host 当前并发数量 KEN <a-site@foxmail.com>
+    public function get_task_per_host_num($url)
+    {
+        if (empty($url))
+        {
+            return 0;
+        }
+        $domain = $this->getRootDomain($url, 'host');
+        if (empty($domain))
+        {
+            return 0;
+        }
+        if (self::$use_redis)
+        {
+            $count = queue::get('task_per_host:'.$domain);
+        }
+        else
+        {
+            $count = self::$task_per_host_counter[$domain];
+        }
+        return $count;
     }
 
     /**

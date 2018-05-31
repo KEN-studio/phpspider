@@ -414,7 +414,7 @@ class phpspider
         $configs['max_stand_by_time'] = isset($configs['max_stand_by_time']) ? $configs['max_stand_by_time'] : self::$max_stand_by_time;
         $configs['max_task_per_host'] = isset($configs['max_task_per_host']) ? $configs['max_task_per_host'] : self::$max_task_per_host;
         //启用 host并发上限时，队列参数默认为随机
-        if ($configs['max_task_per_host'] > 0 and ! isset($configs['queue_order']))
+        if ($configs['max_task_per_host'] > 0)
         {
             $configs['queue_order'] = 'rand';
         }
@@ -2963,7 +2963,7 @@ class phpspider
         {
             if ($type == 'decr')
             {
-                $task_per_host_counter[$domain] = queue::incr('task_per_host:'.$domain);
+                $task_per_host_counter[$domain] = queue::decr('task_per_host:'.$domain);
             }
             else
             {

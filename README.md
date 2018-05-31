@@ -2,6 +2,19 @@
 《我用爬虫一天时间“偷了”知乎一百万用户，只为证明PHP是世界上最好的语言 》所使用的程序
 原版地址：https://github.com/owner888/phpspider
 本修改版改动如下：
+20180530 更新
+    //增加要排除的内容页特征正则
+    'content_url_regexes_remove' => array(
+        '.360webcache.com',
+        '.so.com',
+        '.360.com',
+        '.baidu.com',
+        'cache.baiducontent.com',
+        '.sogou.com',
+        'snapshot.sogoucdn.com',
+        '.bing.com',
+        '.bingj.com',
+    ),
 20180529变动
 - 按host设置并发上限
 - 优化部分功能性能

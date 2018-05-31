@@ -624,6 +624,19 @@ class phpspider
         {
             return false;
         }
+
+        //增加 要排除的列表页特征正则 BY KEN <a-site@foxmail.com>
+        if ( ! empty(self::$configs['list_url_regexes_remove']))
+        {
+            foreach (self::$configs['list_url_regexes_remove'] as $regex)
+            {
+                if (preg_match("#{$regex}#i", $url))
+                {
+                    return false;
+                }
+            }
+        }
+
         //增加无列表页选项，即所有页面都要抓取内容，包含列表页
         if (empty(self::$configs['list_url_regexes']) or self::$configs['list_url_regexes'][0] == 'x')
         {
@@ -667,6 +680,19 @@ class phpspider
         {
             return false;
         }
+
+        //增加 要排除的内容页特征正则 BY KEN <a-site@foxmail.com>
+        if ( ! empty(self::$configs['content_url_regexes_remove']))
+        {
+            foreach (self::$configs['content_url_regexes_remove'] as $regex)
+            {
+                if (preg_match("#{$regex}#i", $url))
+                {
+                    return false;
+                }
+            }
+        }
+
         //增加泛内容模式，即所有页面都要提取内容
         if (empty(self::$configs['content_url_regexes']) or self::$configs['content_url_regexes'][0] == '*')
         {

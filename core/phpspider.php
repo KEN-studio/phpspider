@@ -220,9 +220,9 @@ class phpspider
     public static $max_duration = 0;
 
     /**
-     * 【KEN】单域名最大子域名发现数量 防止掉进蜘蛛池，默认3000（多数大型网站上限）
+     * 【KEN】单域名最大子域名发现数量 防止掉进蜘蛛池，推荐值：3000（多数大型网站上限）
      */
-    public static $max_sub_num = 3000;
+    public static $max_sub_num = 3000; //建议值 3000
 
     /**
      * 【KEN】子进程未获取任务，超时退出前，等待计时器
@@ -233,7 +233,7 @@ class phpspider
     /**
      * 【KEN】子进程未获取任务，超时退出前，最大等待时长/秒，全部任务束后，子进程将会等待的时间，以便有缓冲时间，获得新的任务
      */
-    public static $max_stand_by_time = 60;
+    public static $max_stand_by_time = 60; //建议值 60
 
     /**
      * 【KEN】每个主机并发上限，降低对方网站流量压力和减少被阻挡概率，建议值 6 ，须与 queue_order = rand 一起使用
@@ -413,7 +413,7 @@ class phpspider
         $configs['max_sub_num']       = isset($configs['max_sub_num']) ? $configs['max_sub_num'] : self::$max_sub_num;
         $configs['max_stand_by_time'] = isset($configs['max_stand_by_time']) ? $configs['max_stand_by_time'] : self::$max_stand_by_time;
         $configs['max_task_per_host'] = isset($configs['max_task_per_host']) ? $configs['max_task_per_host'] : self::$max_task_per_host;
-        //启用 host并发上限时，队列参数默认为随机
+        //启用 host并发上限时，队列参数强制为随机
         if ($configs['max_task_per_host'] > 0)
         {
             $configs['queue_order'] = 'rand';
@@ -488,14 +488,14 @@ class phpspider
         $link['url_type'] = 'scan_page';
         $link             = $this->link_uncompress($link);
 
-        if ($this->is_list_page($url))
-        {
-            $link['url_type'] = 'list_page';
-            $status           = $this->queue_lpush($link, $allowed_repeat);
-        }
-        elseif ($this->is_content_page($url))
+        if ($this->is_content_page($url))
         {
             $link['url_type'] = 'content_page';
+            $status           = $this->queue_lpush($link, $allowed_repeat);
+        }
+        elseif ($this->is_list_page($url))
+        {
+            $link['url_type'] = 'list_page';
             $status           = $this->queue_lpush($link, $allowed_repeat);
         }
         else
@@ -509,13 +509,13 @@ class phpspider
             {
                 log::debug("Find scan page: {$url}");
             }
-            elseif ($link['url_type'] == 'list_page')
-            {
-                log::debug("Find list page: {$url}");
-            }
             elseif ($link['url_type'] == 'content_page')
             {
                 log::debug("Find content page: {$url}");
+            }
+            elseif ($link['url_type'] == 'list_page')
+            {
+                log::debug("Find list page: {$url}");
             }
         }
 
@@ -553,15 +553,14 @@ class phpspider
         $link['depth'] = $depth;
         $link          = $this->link_uncompress($link);
 
-        if ($this->is_list_page($url))
-        {
-            $link['url_type'] = 'list_page';
-            $status           = $this->queue_lpush($link);
-        }
-
         if ($this->is_content_page($url))
         {
             $link['url_type'] = 'content_page';
+            $status           = $this->queue_lpush($link);
+        }
+        elseif ($this->is_list_page($url))
+        {
+            $link['url_type'] = 'list_page';
             $status           = $this->queue_lpush($link);
         }
 
@@ -571,13 +570,13 @@ class phpspider
             {
                 log::debug("Find scan page: {$url}");
             }
-            elseif ($link['url_type'] == 'list_page')
-            {
-                log::debug("Find list page: {$url}");
-            }
             elseif ($link['url_type'] == 'content_page')
             {
                 log::debug("Find content page: {$url}");
+            }
+            elseif ($link['url_type'] == 'list_page')
+            {
+                log::debug("Find list page: {$url}");
             }
         }
 
@@ -1393,11 +1392,11 @@ class phpspider
 
             }
         }
-        elseif ($link['url_type'] == 'list_page')
+        elseif ($link['url_type'] == 'content_page')
         {
-            if ($this->on_list_page)
+            if ($this->on_content_page)
             {
-                $return = call_user_func($this->on_list_page, $page, $page['raw'], $this);
+                $return = call_user_func($this->on_content_page, $page, $page['raw'], $this);
                 if (isset($return))
                 {
                     $is_find_url = $return;
@@ -1405,11 +1404,11 @@ class phpspider
 
             }
         }
-        elseif ($link['url_type'] == 'content_page')
+        elseif ($link['url_type'] == 'list_page')
         {
-            if ($this->on_content_page)
+            if ($this->on_list_page)
             {
-                $return = call_user_func($this->on_content_page, $page, $page['raw'], $this);
+                $return = call_user_func($this->on_list_page, $page, $page['raw'], $this);
                 if (isset($return))
                 {
                     $is_find_url = $return;
@@ -1523,6 +1522,7 @@ class phpspider
             {
                 $html = $return;
             }
+            unset($return);
             if ( ! $html)
             {
                 return false;
@@ -2862,21 +2862,28 @@ class phpspider
      */
     public function incr_pages_num($url = '')
     {
+        if ( ! empty($url))
+        {
+            $domain = $this->getRootDomain($url, 'host');
+        }
+        if (empty($domain))
+        {
+            $domain = 'all';
+        }
         if (self::$use_redis)
         {
-            if ( ! empty($url))
-            {
-                $domain = $this->getRootDomain($url);
-            }
-            if (empty($domain))
-            {
-                $domain = 'all';
-            }
             $pages_num[$domain] = queue::incr('pages_num:'.$domain);
         }
         else
         {
-            self::$pages_num[$domain]++;
+            if (empty(self::$pages_num[$domain]))
+            {
+                self::$pages_num[$domain] = 1;
+            }
+            else
+            {
+                self::$pages_num[$domain]++;
+            }
             $pages_num[$domain] = self::$pages_num[$domain];
         }
         return $pages_num[$domain];
@@ -2941,7 +2948,7 @@ class phpspider
         }
         else
         {
-            $duration[$domain] = self::$duration[$domain];
+            $duration[$domain] =  ! empty(self::$duration[$domain]) ? self::$duration[$domain] : 0;
         }
         return $duration[$domain] ? $duration[$domain] : 0;
     }
@@ -3384,21 +3391,21 @@ class phpspider
             return 0;
         }
         $count = 0;
+
+        $domain = $this->getRootDomain($url, 'root');
+        if (empty($domain))
+        {
+            return $count;
+        }
+        $host = $this->getRootDomain($url, 'host');
+        if (empty($host))
+        {
+            return $count;
+        }
         if (self::$use_redis)
         {
-            $domain = $this->getRootDomain($url, 'root');
-            if (empty($domain))
-            {
-                return 0;
-            }
             $count = queue::get($domain);
             if ( ! empty(self::$configs['max_sub_num']) and $count > self::$configs['max_sub_num'])
-            {
-                return $count;
-            }
-
-            $host = $this->getRootDomain($url, 'host');
-            if (empty($host))
             {
                 return $count;
             }
@@ -3414,7 +3421,6 @@ class phpspider
                 $count = queue::incr($domain);
                 queue::set($hostkey, 1);
             }
-
         }
         return $count;
     }

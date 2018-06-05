@@ -1374,7 +1374,7 @@ class phpspider
             {
                 $page = $return;
             }
-
+            unset($return);
         }
 
         // 是否从当前页面分析提取URL
@@ -1390,6 +1390,7 @@ class phpspider
                     $is_find_url = $return;
                 }
 
+                unset($return);
             }
         }
         elseif ($link['url_type'] == 'content_page')
@@ -1401,7 +1402,7 @@ class phpspider
                 {
                     $is_find_url = $return;
                 }
-
+                unset($return);
             }
         }
         elseif ($link['url_type'] == 'list_page')
@@ -1413,7 +1414,7 @@ class phpspider
                 {
                     $is_find_url = $return;
                 }
-
+                unset($return);
             }
         }
 
@@ -1848,7 +1849,7 @@ class phpspider
         if ( ! empty($parse_url['host']))
         {
             //2018-1-3 通配所有域名
-            if (self::$configs['domains'][0] == '*')
+            if (empty(self::$configs['domains']) or self::$configs['domains'][0] == '*')
             {
                 return $url;
             }
@@ -3390,12 +3391,11 @@ class phpspider
         {
             return 0;
         }
-        $count = 0;
-
+        $count  = 0;
         $domain = $this->getRootDomain($url, 'root');
         if (empty($domain))
         {
-            return $count;
+            return 0;
         }
         $host = $this->getRootDomain($url, 'host');
         if (empty($host))
@@ -3438,9 +3438,11 @@ class phpspider
             $url = 'http://'.$url;
         }
         //截取限定字符
+        $arr = array();
         if (preg_match_all('/(^https?:\/\/[\p{Han}a-zA-Z0-9\-\.\/]+)/iu', $url, $arr))
         {
             $url = $arr['0']['0'];
+            unset($arr);
         }
         $url_parse = parse_url(strtolower($url));
         if (empty($url_parse['host']))

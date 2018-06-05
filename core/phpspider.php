@@ -1725,7 +1725,7 @@ class phpspider
      * @author seatle <seatle@foxmail.com>
      * @created time :2016-09-23 17:13
      */
-    public function fill_url($url, $collect_url)
+    public function fill_url($url, $collect_url, $plan = 'B')
     {
         $url         = trim($url);
         $collect_url = trim($collect_url);
@@ -1742,6 +1742,30 @@ class phpspider
             return false;
         }
 
+        //套用第二套uri补全方案，修正当uri开始于?和#号时的问题
+        if ($plan === 'B')
+        {
+            $url       = $this->uri2url($url, $collect_url);
+            $parse_url = @parse_url($url);
+            $domain    = empty($parse_url['host']) ? $domain : $parse_url['host'];
+            // 如果host不为空, 判断是不是要爬取的域名
+            if ( ! empty($parse_url['host']))
+            {
+                //2018-1-3 通配所有域名
+                if (empty(self::$configs['domains']) or self::$configs['domains'][0] == '*')
+                {
+                    return $url;
+                }
+                //排除非域名下的url以提高爬取速度
+                if ( ! in_array($parse_url['host'], self::$configs['domains']))
+                {
+                    return false;
+                }
+            }
+            return $url;
+        }
+
+        //以下为第一套方案，目前弃用
         $parse_url = @parse_url($collect_url);
         if (empty($parse_url['scheme']) || empty($parse_url['host']))
         {
@@ -1861,6 +1885,198 @@ class phpspider
         }
 
         return $url;
+    }
+
+    //第二套 uri 补全为 url 方案
+    /**
+     * is a full url
+     *
+     * @param string $str
+     * @return boolean
+     */
+    public function isUrl($str)
+    {
+        $str = ltrim($str);
+        $str = strtolower($str);
+        return in_array(substr($str, 0, 7),
+            array(
+                'http://',
+                'https:/',
+            ));
+    }
+
+    /**
+     * urlCurrent should be redirected final url.Final url normally has '/' suffix.
+     *
+     * @param string $uri
+     *            uri in the html
+     * @param string $urlCurrent
+     *            redirected final url of the page
+     * @return string
+     */
+    public function uri2url($uri, $urlCurrent)
+    {
+        $uri = trim($uri);
+        if (empty($uri))
+        {
+            return $urlCurrent;
+        }
+        if ( ! $this->isUrl($urlCurrent))
+        {
+            return '';
+            //throw new Exception('url is invalid, url='.$urlCurrent);
+        }
+        //修正如京东 //开头的完整url
+        if (substr($uri, 0, 2) == '//')
+        {
+            $url = parse_url($urlCurrent, PHP_URL_SCHEME).':'.$uri;
+            //检测修正后是不是正确的域名 防止 //a.html 类的错误
+            if (empty($this->getRootDomain($url, 'host', true)))
+            {
+                $uri = preg_replace('/^\//', '', $uri);
+            }
+            else
+            {
+                $uri = $url;
+            }
+        }
+        if ($this->isUrl($uri))
+        {
+            return $uri;
+        }
+
+        // uri started with ?,#
+        if (0 === strpos($uri, '#') || 0 === strpos($uri, '?'))
+        {
+            if (false !== ($pos = strpos($urlCurrent, '#')))
+            {
+                $urlCurrent = substr($urlCurrent, 0, $pos);
+            }
+            if (false !== ($pos = strpos($urlCurrent, '?')))
+            {
+                $urlCurrent = substr($urlCurrent, 0, $pos);
+            }
+            return $urlCurrent.$uri;
+        }
+        if (0 === strpos($uri, './'))
+        {
+            $uri = substr($uri, 2);
+        }
+        $urlDir = $this->urlDir($urlCurrent);
+        if (0 === strpos($uri, '/'))
+        {
+            $len = strlen(parse_url($urlDir, PHP_URL_PATH));
+            return substr($urlDir, 0, 0 - $len).$uri;
+        }
+        else
+        {
+            return $urlDir.$uri;
+        }
+    }
+
+    /**
+     * get relative uri of the current page.
+     * urlCurrent should be redirected final url.Final url normally has '/' suffix.
+     *
+     * @param string $url
+     * @param string $urlCurrent
+     *            redirected final url of the html page
+     * @return string
+     */
+    public function url2uri($url, $urlCurrent)
+    {
+        if ( ! $this->isUrl($url))
+        {
+            return '';
+            //throw new Exception('url is invalid, url='.$url);
+        }
+        $urlDir = $this->urlDir($urlCurrent);
+        $parse1 = parse_url($url);
+        $parse2 = parse_url($urlDir);
+        if ( ! array_key_exists('port', $parse1))
+        {
+            $parse1['port'] = null;
+        }
+        if ( ! array_key_exists('port', $parse2))
+        {
+            $parse2['port'] = null;
+        }
+        $eq = true;
+        foreach (array(
+            'scheme',
+            'host',
+            'port',
+        ) as $v)
+        {
+            if (isset($parse1[$v]) && isset($parse2[$v]))
+            {
+                if ($parse1[$v] != $parse2[$v])
+                {
+                    $eq = false;
+                    break;
+                }
+            }
+        }
+        $path = null;
+        if ($eq)
+        {
+            $len   = strlen($urlDir) - strlen(parse_url($urlDir, PHP_URL_PATH));
+            $path1 = substr($url, $len + 1);
+            $path2 = substr($urlDir, $len + 1);
+            $arr1  = $arr2  = array();
+            if ( ! empty($path1))
+            {
+                $arr1 = explode('/', rtrim($path1, '/'));
+            }
+            if ( ! empty($path2))
+            {
+                $arr2 = explode('/', rtrim($path2, '/'));
+            }
+            foreach ($arr1 as $k => $v)
+            {
+                if (array_key_exists($k, $arr2) && $v == $arr2[$k])
+                {
+                    unset($arr1[$k], $arr2[$k]);
+                }
+                else
+                {
+                    break;
+                }
+            }
+            $path = '';
+            foreach ($arr2 as $v)
+            {
+                $path .= '../';
+            }
+            $path .= implode('/', $arr1);
+        }
+        return $path;
+    }
+
+    /**
+     * url should be redirected final url.Final url normally has '/' suffix.
+     *
+     * @param string $url
+     *            the final directed url
+     * @return string
+     */
+    public function urlDir($url)
+    {
+        if ( ! $this->isUrl($url))
+        {
+            throw new Exception('url is invalid, url='.$url);
+        }
+        $parse  = parse_url($url);
+        $urlDir = $url;
+        if (isset($parse['path']))
+        {
+            // none / end url should be finally redirected to / ended url
+            if ('/' != substr($urlDir, -1))
+            {
+                $urlDir = dirname($urlDir).'/';
+            }
+        }
+        return $urlDir;
     }
 
     /**
@@ -3426,7 +3642,7 @@ class phpspider
     }
 
     //提取url的根域名 host domain subdomain name tld
-    public function getRootDomain($url = '', $type = 'root')
+    public function getRootDomain($url = '', $type = 'root', $domain_check = false)
     {
         if (empty($url))
         {
@@ -3450,7 +3666,7 @@ class phpspider
             return '';
         }
         //host判断快速返回
-        if ($type == 'host')
+        if ($type == 'host' and $domain_check === false)
         {
             return $url_parse['host'];
         }

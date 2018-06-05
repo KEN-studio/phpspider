@@ -45,7 +45,7 @@ class requests
     public static $domain_cookies = array(); // array of cookies for domain to pass
     public static $hosts          = array(); // random host binding for make request faster
     public static $headers        = array(); // headers returned from server sent here
-    public static $useragents     = array('requests/2.0.0'); // random agent we masquerade as
+    public static $useragents     = array('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.139 Safari/537.36'); // random agent we masquerade as
     public static $client_ips     = array(); // random ip we masquerade as
     public static $proxies        = array(); // random proxy ip
     public static $raw            = ''; // head + body content returned from server sent here
@@ -438,7 +438,7 @@ class requests
      */
     public static function get_encoding($string)
     {
-        $encoding = mb_detect_encoding($string, array('UTF-8', 'GBK', 'GB2312', 'LATIN1', 'ASCII', 'BIG5'));
+        $encoding = mb_detect_encoding($string, array('UTF-8', 'GBK', 'GB2312', 'LATIN1', 'ASCII', 'BIG5', 'ISO-8859-1'));
         return strtolower($encoding);
     }
 
@@ -479,7 +479,7 @@ class requests
             self::$ch = curl_init();
             curl_setopt(self::$ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt(self::$ch, CURLOPT_HEADER, false);
-            curl_setopt(self::$ch, CURLOPT_USERAGENT, 'phpspider-requests/'.self::VERSION);
+            curl_setopt(self::$ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.139 Safari/537.36');
             // 如果设置了两个时间，就分开设置
             if (is_array(self::$timeout))
             {
@@ -491,6 +491,7 @@ class requests
                 curl_setopt(self::$ch, CURLOPT_CONNECTTIMEOUT, ceil(self::$timeout / 2));
                 curl_setopt(self::$ch, CURLOPT_TIMEOUT, self::$timeout);
             }
+            curl_setopt(self::$ch, CURLOPT_MAXREDIRS, 3);//maximum number of redirects allowed
             // 在多线程处理场景下使用超时选项时，会忽略signals对应的处理函数，但是无耐的是还有小概率的crash情况发生
             curl_setopt(self::$ch, CURLOPT_NOSIGNAL, true);
         }
@@ -890,12 +891,16 @@ class requests
             }
             if (empty($in) and function_exists('mb_detect_encoding'))
             {
-                $in = mb_detect_encoding($html, array('UTF-8', 'GB2312', 'GBK', 'BIG5'));
+                $in = mb_detect_encoding($html, array('UTF-8', 'GBK', 'GB2312', 'LATIN1', 'ASCII', 'BIG5', 'ISO-8859-1'));
             }
         }
 
         if (isset($in))
         {
+            if ($in == 'ISO-8859-1')
+            {
+                $in = 'UTF-8';
+            }
             $old  = error_reporting(error_reporting() & ~E_NOTICE);
             $html = call_user_func($func, $in, $out.'//IGNORE', $html);
             error_reporting($old);

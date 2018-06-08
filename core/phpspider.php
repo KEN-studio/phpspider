@@ -1742,7 +1742,7 @@ class phpspider
             return false;
         }
 
-        //套用第二套uri补全方案，修正当uri开始于?和#号时的问题
+        //套用第二套uri补全方案，修正当uri开始于?和#号时的问题 感谢 Ares 共享的代码
         if ($plan === 'B')
         {
             $url       = $this->uri2url($url, $collect_url);
@@ -3666,7 +3666,7 @@ class phpspider
             return '';
         }
         //host判断快速返回
-        if ($type == 'host' and $domain_check === false)
+        if ($domain_check === false and $type == 'host')
         {
             return $url_parse['host'];
         }

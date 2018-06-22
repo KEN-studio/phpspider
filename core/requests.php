@@ -348,7 +348,7 @@ class requests
         //}
 
         // 设置了输出编码的转码，注意: xpath只支持utf-8，iso-8859-1 不要转，他本身就是utf-8
-        $body = self::encoding($body, self::$encoding); //自动转码
+        $body = self::encoding($body); //自动转码
         // 转码后
         self::$encoding = self::$output_encoding;
 
@@ -491,7 +491,7 @@ class requests
                 curl_setopt(self::$ch, CURLOPT_CONNECTTIMEOUT, ceil(self::$timeout / 2));
                 curl_setopt(self::$ch, CURLOPT_TIMEOUT, self::$timeout);
             }
-            curl_setopt(self::$ch, CURLOPT_MAXREDIRS, 3);//maximum number of redirects allowed
+            curl_setopt(self::$ch, CURLOPT_MAXREDIRS, 5); //maximum number of redirects allowed
             // 在多线程处理场景下使用超时选项时，会忽略signals对应的处理函数，但是无耐的是还有小概率的crash情况发生
             curl_setopt(self::$ch, CURLOPT_NOSIGNAL, true);
         }
@@ -854,6 +854,10 @@ class requests
             'iconv',
             'mb_convert_encoding',
         );
+        if (isset(self::$output_encoding))
+        {
+            $out = self::$output_encoding;
+        }
         if ( ! isset($out))
         {
             $out = 'UTF-8';

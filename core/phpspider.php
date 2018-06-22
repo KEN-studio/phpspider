@@ -1966,10 +1966,18 @@ class phpspider
         if (0 === strpos($uri, '/'))
         {
             $len = strlen(parse_url($urlDir, PHP_URL_PATH));
+            if (0 === $len)
+            {
+                return $urlDir.$uri;
+            }
             return substr($urlDir, 0, 0 - $len).$uri;
         }
         else
         {
+            if ( ! preg_match('/^[#\?\/&]/i', $uri) and ! preg_match('/[#\?\/&]$/i', $urlDir))
+            {
+                $urlDir = rtrim($urlDir, '/').'/';
+            }
             return $urlDir.$uri;
         }
     }

@@ -238,7 +238,7 @@ class phpspider
     /**
      * 【KEN】每个主机并发上限，降低对方网站流量压力和减少被阻挡概率，建议值 6 ，须与 queue_order = rand 一起使用
      */
-    public static $max_task_per_host     = 0;
+    public static $max_task_per_host     = 0; //0值和非0值会使用不同类型的队列缓存库，从0改为非0值或从非0值改为0需清空队列缓存库再运行，否则任务无法添加
     public static $task_per_host_counter = array(); //计数容器
 
     /**

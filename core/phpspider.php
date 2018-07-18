@@ -1437,10 +1437,8 @@ class phpspider
         }
 
         // 如果当前深度大于缓存的, 更新缓存
-        if (self::$taskmaster)
-        {
-            $this->incr_depth_num($link['depth']);
-        }
+        $this->incr_depth_num($link['depth']);
+
         // 处理页面耗时时间
         $time_run = round(microtime(true) - $page_time_start, 3);
         log::debug('task id: '.self::$taskid." Success process page {$url} in {$time_run} s");

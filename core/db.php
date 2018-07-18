@@ -22,6 +22,11 @@ class db
     private static $links         = array();
     private static $link_name     = 'default';
     private static $autocommiting = false;
+    //兼容旧版本
+    public static function init_mysql()
+    {
+        self::_init();
+    }
 
     public static function _init()
     {

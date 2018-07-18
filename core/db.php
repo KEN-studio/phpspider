@@ -19,10 +19,11 @@ class db
 {
     private static $configs = array();
     private static $rsid;
-    private static $links     = array();
-    private static $link_name = 'default';
+    private static $links         = array();
+    private static $link_name     = 'default';
+    private static $autocommiting = false;
 
-    public static function init_mysql()
+    public static function _init()
     {
         // 获取配置
         $config = self::$link_name == 'default' ? self::_get_default_config() : self::$configs[self::$link_name];
@@ -49,7 +50,7 @@ class db
                 {
                     exit(250);
                 }
-                self::init_mysql($config);
+                self::_init($config);
             }
             else
             {
@@ -89,7 +90,7 @@ class db
             }
         }
         // 注意，只会连接最后一个，不过貌似也够用了啊
-        self::init_mysql();
+        self::_init();
     }
 
     /**
@@ -153,30 +154,34 @@ class db
 
     public static function autocommit($mode = false)
     {
-        //self::$links[self::$link_name]['conn'] = self::init_mysql();
-        // $int = $mode ? 1 : 0;
-        // return @mysqli_query(self::$links[self::$link_name]['conn'], "SET autocommit={$int}");
-        self::init_mysql();
+        if (self::$autocommiting)
+        {
+            return true;
+        }
+
+        self::$autocommiting = true;
+
+        self::_init();
         return mysqli_autocommit(self::$links[self::$link_name]['conn'], $mode);
     }
 
     public static function begin_tran()
     {
-        // self::$links[self::$link_name]['conn'] = self::init_mysql( true );
-        // return @mysqli_query(self::$links[self::$link_name]['conn'], 'BEGIN');
         return self::autocommit(false);
     }
 
     public static function commit()
     {
-        self::init_mysql();
-        return mysqli_commit(self::$links[self::$link_name]['conn']);
+        mysqli_commit(self::$links[self::$link_name]['conn']);
+        self::autocommit(true);
+        return true;
     }
 
     public static function rollback()
     {
-        self::init_mysql();
-        return mysqli_rollback(self::$links[self::$link_name]['conn']);
+        mysqli_rollback(self::$links[self::$link_name]['conn']);
+        self::autocommit(true);
+        return true;
     }
 
     public static function query($sql)
@@ -184,7 +189,7 @@ class db
         $sql = trim($sql);
 
         // 初始化数据库
-        self::init_mysql();
+        self::_init();
         self::$rsid = @mysqli_query(self::$links[self::$link_name]['conn'], $sql);
 
         if (self::$rsid === false)
@@ -249,7 +254,7 @@ class db
         return $row;
     }
 
-    public static function get_one($sql, $func = '')
+    public static function get_one($sql)
     {
         if ( ! preg_match('/limit/i', $sql))
         {
@@ -258,33 +263,25 @@ class db
         $rsid = self::query($sql);
         if ($rsid === false)
         {
-            return;
+            return array();
         }
         $row = self::fetch($rsid);
         self::free($rsid);
-        if ( ! empty($func))
-        {
-            return call_user_func($func, $row);
-        }
         return $row;
     }
 
-    public static function get_all($sql, $func = '')
+    public static function get_all($sql)
     {
         $rsid = self::query($sql);
         if ($rsid === false)
         {
-            return;
+            return array();
         }
         while ($row = self::fetch($rsid))
         {
             $rows[] = $row;
         }
         self::free($rsid);
-        if ( ! empty($func))
-        {
-            return call_user_func($func, $rows);
-        }
         return empty($rows) ? false : $rows;
     }
 
@@ -341,8 +338,7 @@ class db
         $fields = self::get_fields($table);
 
         $keys_sql = $vals_sql = array();
-        $i        = 0;
-        foreach ($set as $val)
+        foreach ($set as $i => $val)
         {
             ksort($val);
             $vals = array();
@@ -354,14 +350,13 @@ class db
                     continue;
                 }
                 // 如果是第一个数组，把key当做插入条件
-                if ($i === 0)
+                if ($i == 0 && $k == 0)
                 {
                     $keys_sql[] = "`$k`";
                 }
                 $vals[] = "\"$v\"";
             }
             $vals_sql[] = implode(',', $vals);
-            $i++;
         }
 
         $sql = "Insert Ignore Into `{$table}`(".implode(', ', $keys_sql).') Values ('.implode('), (', $vals_sql).')';
@@ -520,7 +515,7 @@ class db
         {
             @mysqli_close(self::$links[self::$link_name]['conn']);
             self::$links[self::$link_name]['conn'] = null;
-            self::init_mysql();
+            self::_init();
         }
     }
 

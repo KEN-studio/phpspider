@@ -43,7 +43,7 @@ class phpspider
      * 版本号
      * @var string
      */
-    const VERSION = '2.1.3 Modify By KEN';
+    const VERSION = '2.1.5';
 
     /**
      * 爬虫爬取每个网页的时间间隔,0表示不延时, 单位: 毫秒
@@ -285,6 +285,15 @@ class phpspider
     public $on_start = null;
 
     /**
+     * URL采集前调用
+     * 比如有时需要根据某个特定的URL，来决定这次的请求是否使用代理 / 或使用哪个代理
+     *
+     * @var mixed
+     * @access public
+     */
+    public $on_before_download_page = null;
+
+    /**
      * 网页状态码回调
      *
      * @var mixed
@@ -459,6 +468,7 @@ class phpspider
         {
             self::$queue_config['prefix'] = self::$queue_config['prefix'].'-'.substr(md5($configs['name']), 0, 4);
         }
+
         self::$configs = $configs;
     }
 
@@ -659,7 +669,6 @@ class phpspider
                 }
             }
         }
-
         return $result;
     }
 
@@ -1185,6 +1194,7 @@ class phpspider
                 $this->collect_page();
                 // 保存任务状态
                 $this->set_task_status();
+
                 // 每采集成功一次页面, 就刷新一次面板
                 if ( ! log::$log_show && ! self::$daemonize)
                 {
@@ -1312,6 +1322,18 @@ class phpspider
 
         // 爬取页面开始时间
         $page_time_start = microtime(true);
+
+        // 下载页面前执行
+        // 比如有时需要根据某个特定的URL，来决定这次的请求是否使用代理 / 或使用哪个代理
+        if ($this->on_before_download_page)
+        {
+            $return = call_user_func($this->on_before_download_page, $url, $link, $this);
+            if (isset($return))
+            {
+                $link = $return;
+            }
+
+        }
 
         requests::$input_encoding = null;
         $html                     = $this->request_url($url, $link);
@@ -1467,6 +1489,7 @@ class phpspider
     public function request_url($url, $link = array())
     {
         $time_start = microtime(true);
+
         // 设置了编码就不要让requests去判断了
         if (isset(self::$configs['input_encoding']))
         {
@@ -1476,11 +1499,17 @@ class phpspider
         requests::$output_encoding = 'utf-8';
         requests::set_timeout(self::$configs['timeout']);
         requests::set_useragent(self::$configs['user_agent']);
+
+        // 先删除伪造IP
+        requests::del_client_ip();
+        // 是否设置了伪造IP
         if (self::$configs['client_ip'])
         {
             requests::set_client_ip(self::$configs['client_ip']);
         }
 
+        // 先删除代理，免得前一个URL的代理被带过来了
+        requests::del_proxy();
         // 是否设置了代理
         if ($link['proxy'])
         {
@@ -1853,12 +1882,14 @@ class phpspider
                 $url    = preg_replace('#^https://#i', '', $url);
                 $scheme = 'https';
             }
+            // 相对路径，像 1111.html 这种
             else
             {
-                //$arr = explode("/", $base_url_path);
-                //array_pop($arr);
-                //$base_url_path = implode("/", $arr);
-                $url = $base_url_path.'/'.$url;
+                $arr = explode('/', $base_url_path);
+                // 去掉空值
+                $arr           = array_filter($arr);
+                $base_url_path = implode('/', $arr);
+                $url           = $base_url_path.'/'.$url;
             }
         }
         // 两个 / 或以上的替换成一个 /
@@ -2314,6 +2345,7 @@ class phpspider
                 // 没有设置抽取规则的类型 或者 设置为 xpath
                 if ( ! isset($conf['selector_type']) || $conf['selector_type'] == 'xpath')
                 {
+                    // 如果找不到，返回的是false
                     $values = $this->get_fields_xpath($html, $conf['selector'], $conf['name']);
                 }
                 elseif ($conf['selector_type'] == 'css')
@@ -2493,14 +2525,17 @@ class phpspider
 
     public function check_cache()
     {
-        if ( ! self::$use_redis || self::$save_running_state)
+        if ( ! self::$use_redis)
         {
             return false;
         }
 
-        $keys  = queue::keys('*');
-        $count = count($keys);
-        if ($count != 0)
+        // 这个位置要改
+        //$keys = queue::keys("*");
+        //$count = count($keys);
+        // 直接检查db，清空的时候整个db清空，所以注意db不要跟其他项目混用
+        $count = queue::dbsize();
+        if ($count > 0)
         {
             // After this operation, 4,318 kB of additional disk space will be used.
             // Do you want to continue? [Y/n]
@@ -2509,14 +2544,17 @@ class phpspider
             $msg .= 'Do you want to continue? [Y/n]';
             fwrite(STDOUT, $msg);
             $arg = strtolower(trim(fgets(STDIN)));
-            $arg = empty($arg) || ! in_array($arg, array('y', 'n')) ? 'y' : $arg;
+            $arg = empty($arg) || ! in_array($arg, array('Y', 'N', 'y', 'n')) ? 'y' : strtolower($arg);
             if ($arg == 'n')
             {
-                foreach ($keys as $key)
-                {
-                    $key = str_replace(self::$queue_config['prefix'].':', '', $key);
-                    queue::del($key);
-                }
+                log::warn('Clear redis data...');
+                queue::flushdb();
+                // 下面这种性能太差了
+                //foreach ($keys as $key)
+                //{
+                //$key = str_replace(self::$queue_config['prefix'].':', '', $key);
+                //queue::del($key);
+                //}
             }
         }
     }

@@ -630,7 +630,7 @@ class queue
                 return self::dbsize();
             }
         }
-        return null;
+        return 0;
     }
 
     /**
@@ -1283,7 +1283,7 @@ class queue
     /**
      * 集合操作
      */
-    
+
     /**
      * sadd 将数据压入集合
      *

@@ -1,124 +1,110 @@
 <?php
 //----------------------------------
-// PHPSpider 布隆过滤操作类文件
+// PHPSpider 布隆过滤操作类文件 默认使用 db:0
+// ADD BY KEN a-site@foxmail.com
 //----------------------------------
-$n        = 4000000000;//预估总数据量，默认40亿
-//过滤器参数
-$redisCfg = array(array('host' => '127.0.0.1', 'port' => 6379, 'db' => 0));
-$key      = 'spider'; //任务名：redis 键名 $key:$i
-$m        = $n * 50; //布隆条总长度 n的50倍 16个k n为10亿条数据时，误判数为1
-$k        = 16; //Hash个数
-
-$bf = new BloomFilter($redisCfg, $key, $m, $k);
-//$bf->flushall();
-$word = 'aaa';
-for ($i = 0; $i < 100; $i++) {
-  $rt   = $bf->add($word.$i);  
-}
-if ($rt)
-{
-    error_log('WARNING: '.$word.' EXIST!');
-}
-else
-{
-    error_log('WARNING: '.$word.' Not EXIST!');
-}
+namespace phpspider\core;
+use Redis;
 
 class BloomFilter
 {
+    /**
+     *  redis链接标识符号
+     */
+    protected static $redis = null;
 
-    public $key;
-    public $m;
-    public $k;
-    public $nPartitions;
-    public $redisCfg;
-    public $nRedis;
-    public $partitionSize;
+    /**
+     *  redis配置数组
+     */
+    protected static $redisCfg = array(array('host' => '127.0.0.1', 'port' => 6379, 'db' => 0));
+    private static $links      = array();
+    private static $link_name  = 'default';
+    public static $nRedis;
+    //过滤器参数
+    public static $fix_key       = 'bl'; //任务名：redis 键名 $key:$i
+    public static $m             = 4000000000 * 50; //布隆条总长度，默认40亿数据*50倍
+    public static $k             = 16; //Hash个数
+    public static $nPartitions   = 0;
+    public static $partitionSize = 0;
 
-    public $maxOffs = array();//当前最大偏移量 偏移量之前的内存空间会用0填充占用
+    public static $maxOffs = array(); //当前最大偏移量 偏移量之前的内存空间会用0填充占用
 
-    const MAX_PARTITION_SIZE = 4294967296 - 1; //redis string's max len is pow(2, 32) bits = 512MB
+    //redis string's max len is pow(2, 32) 4294967296 bits = 512MB PHP 32位 INT 最大值 pow(2, 31) 2147483648 bits = 256MB
+    const MAX_PARTITION_SIZE = 4294967296;
     //const MAX_PARTITION_SIZE = 65536;
 
-    public function __construct($redisCfg = array(array('host' => '127.0.0.1', 'port' => 6379, 'db' => 0)), $key = '', $m = 4000000000 * 50, $k = 16)
+    public static function init()
     {
-        $this->nRedis = count($redisCfg);
-        $mPerRedis    = $this->nRedis > 1 ? ceil($m / $this->nRedis) : $m; //$m 布隆条总长度，如果有多个redis配置，则平均分布
+        self::$nRedis = count(self::$redisCfg);
+        $mPerRedis    = self::$nRedis > 1 ? ceil(self::$m / self::$nRedis) : self::$m; //$m 布隆条总长度，如果有多个redis配置，则平均分布
         if ($mPerRedis > self::MAX_PARTITION_SIZE)
         {
             //由于redis最大512MB，超出需要拆分为多个布隆条
-            $this->nPartitions   = ceil($mPerRedis / self::MAX_PARTITION_SIZE);//布隆条拆分个数
-            $this->partitionSize = ceil($mPerRedis / $this->nPartitions);//每个布隆条长度
+            self::$nPartitions   = ceil($mPerRedis / self::MAX_PARTITION_SIZE); //布隆条拆分个数
+            self::$partitionSize = ceil($mPerRedis / self::$nPartitions); //每个布隆条长度 或 512M self::MAX_PARTITION_SIZE
         }
         else
         {
-            $this->nPartitions   = 1;
-            $this->partitionSize = $mPerRedis;
+            self::$nPartitions   = 1;
+            self::$partitionSize = $mPerRedis;
         }
-        $this->key      = 'bf_'.$key;
-        $this->m        = $mPerRedis;
-        $this->k        = $k;
-        $this->redisCfg = $redisCfg;
         //error_log(print_r($this, true));
     }
 
-    private function getRedis($e)
+    public static function add($e)
     {
-        //检查redis配置数，多个则为分布式
-        if ($this->nRedis > 1)
-        {
-            $hash = sprintf('%u', crc32($e));
-            $i    = $hash % $this->nRedis;
-        }
-        else
-        {
-            $i = 0;
-        }
-        $redis = SRedis::getSingeton($this->redisCfg[$i]);
-        return array($i, $redis);
-    }
-
-    public function add($e)
-    {
+        self::init();
         $e                = (string) $e;
-        list($ir, $redis) = $this->getRedis($e);
-        //var_dump($this->key, $this->m, $this->k, $this->nRedis, $this->nPartitions, $redis, $key);
+        list($ir, $redis) = self::getRedis($e);
+        //var_dump(self::$fix_key, self::$m, self::$k, self::$nRedis, self::$nPartitions, $redis, $key);
         $redis->multi(Redis::PIPELINE); //多条命令按照先后顺序被放进一个队列当中，最后由 EXEC 命令原子性(atomic)地执行
-        for ($i = 0; $i < $this->k; $i++)
+        for ($i = 0; $i < self::$k; $i++)
         {
             $seed   = self::getBKDRHashSeed($i); //随机数种子
             $hash   = self::BKDRHash($e, $seed); //Hash数字
-            $offset = $hash % $this->m; //总偏移量
-            $n      = $offset % $this->nPartitions; //布隆条ID
-            $offset = $offset % $this->partitionSize; //布隆条内偏移量
-            $key    = $this->key.':'.$n;
-            //记录当前各key最大偏移量，统计内存占用情况
-            if ($offset > @$this->maxOffs[$ir.'|'.$key])
+            $offset = $hash % self::$m; //总偏移量
+            $n      = 0;
+            if ($offset > self::$partitionSize)
             {
-                $this->maxOffs[$ir.'|'.$key] = $offset;
+                $n      = floor($offset / self::$partitionSize); //布隆条ID
+                $offset = $offset % self::$partitionSize; //布隆条内偏移量
             }
-            $redis->setbit($key, $offset, 1);
+            $key = self::$fix_key.':'.$n; //存储布隆条的redis key
+            //记录当前各key最大偏移量，统计内存占用情况
+            if ($offset > @self::$maxOffs[$ir.'|'.$key])
+            {
+                self::$maxOffs[$ir.'|'.$key] = $offset;
+            }
+            $redis->setbit($key, $offset, 1); //将指定偏移位置设置为1
         }
         //only for log
-        $t1   = microtime(true);
+        //$t1   = microtime(true);
         $rt   = $redis->exec();
-        $t2   = microtime(true);
-        $cost = round(($t2 - $t1) * 1000, 3).'ms';
-        //已存在hash个数
-        $c    = array_sum($rt); 
+        //$t2   = microtime(true);
+        //$cost = round(($t2 - $t1) * 1000, 3).'ms';
+        //偏移位置已经为1的个数
+        $c = array_sum($rt);
 
-        echo ('['.date('Y-m-d H:i:s', time()).'] DEBUG: redis['.$ir.']-time-spent='.$cost.' maxOffset-of-'.$ir.'|'.$key.'='.$this->maxOffs[$ir.'|'.$key].' entry='.$e.' c='.$c).' nPartitions='.$this->nPartitions.' partitionSize='.$this->partitionSize.' Max_mem='.round(($this->nPartitions*$this->partitionSize)/8/1024/1024,2).'M, Current_mem= '.round(array_sum($this->maxOffs)/8/1024/1024,2).'M'.PHP_EOL;
-        return $c === $this->k;
+        //only for log
+        //$exists = 'not exists';
+        //if ($c === self::$k) {
+        //    $exists = 'exists';
+        //}
+        //$msg = ('['.date('Y-m-d H:i:s', time()).'] DEBUG: redis['.$ir.']-time-spent='.$cost.' maxOffset-of-'.$ir.'|'.$key.'='.self::$maxOffs[$ir.'|'.$key].' entry='.$e.' '.$exists.' c='.$c).' nPartitions='.self::$nPartitions.' partitionSize='.self::$partitionSize.' Max_mem='.round((self::$nPartitions * (self::$partitionSize) / 8 / 1024 / 1024), 2).'M, Current_mem= '.round(array_sum(self::$maxOffs) / 8 / 1024 / 1024, 2).'M'.PHP_EOL;
+        //log::debug($msg);
+
+        //如果所有偏移位置均为1，则表示此内容为重复
+        return $c === self::$k;
     }
 
-    public function flushall()
+    public static function flushall()
     {
-        foreach ($this->redisCfg as $cfg)
+        foreach (self::$redisCfg as $cfg)
         {
-            $redis = SRedis::getSingeton($cfg);
-            for ($i = 0; $i < $this->nPartitions; $i++)
+            $redis = self::getSingeton($cfg);
+            for ($i = 0; $i < self::$nPartitions; $i++)
             {
-                $redis->delete($this->key.':'.$i);
+                $redis->delete(self::$fix_key.':'.$i);
             }
         }
     }
@@ -148,20 +134,36 @@ class BloomFilter
 
     public static function BKDRHash($str, $seed)
     {
-        $hash = 0;
+        $hash = 1;
         $len  = strlen($str);
         $i    = 0;
         while ($i < $len)
         {
-            $hash = ((floatval($hash * $seed) & 0x7FFFFFFF) + ord($str[$i])) & 0x7FFFFFFF;
+            $hash = ((floatval($hash * $seed) & PHP_INT_MAX) + ord($str[$i])) & PHP_INT_MAX;
             $i++;
         }
-        return ($hash & 0x7FFFFFFF); //0x7FFFFFFF PHP_INT_MAX 或 0x7FFFFFFFFFFFFFFF 64位可使用此值
+        return ($hash & PHP_INT_MAX); //0x7FFFFFFF PHP_INT_MAX 或 PHP_INT_MAX 64位可使用此值
     }
-}
-class SRedis
-{
-    public static function getSingeton($cfg)
+
+    //获取redis服务器：有多个库则平均分布
+    private static function getRedis($e)
+    {
+        //检查redis配置数，多个则为分布式
+        if (self::$nRedis > 1)
+        {
+            $hash = sprintf('%u', crc32($e));
+            $i    = $hash % self::$nRedis;
+        }
+        else
+        {
+            $i = 0;
+        }
+        $redis = self::getSingeton(self::$redisCfg[$i]);
+        return array($i, $redis);
+    }
+
+    //初始化redis连接
+    private static function getSingeton($cfg)
     {
         static $pool;
         if (empty($cfg) || ! is_array($cfg))
@@ -173,6 +175,9 @@ class SRedis
         {
             $redis = new Redis();
             call_user_func_array(array($redis, 'connect'), array_values($cfg));
+            // 永不超时
+            // ini_set('default_socket_timeout', -1); 无效，要用下面的做法
+            //$redis->setOption(Redis::OPT_READ_TIMEOUT, -1);
             $pool[$k] = $redis;
         }
         return $pool[$k];

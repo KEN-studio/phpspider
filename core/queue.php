@@ -17,6 +17,7 @@ namespace phpspider\core;
 
 use Exception;
 use Redis;
+use phpspider\core\BloomFilter;
 
 class queue
 {
@@ -1232,6 +1233,12 @@ class queue
     public static function exists($key)
     {
         self::init();
+        //增加布隆过滤器 20180826
+        //BloomFilter::init();
+        //使用布隆过滤器判断是否重复内容 20180826
+        return BloomFilter::add($key);
+        
+        //以下内容已经停用
         try
         {
             if (self::$links[self::$link_name])

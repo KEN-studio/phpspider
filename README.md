@@ -2,6 +2,12 @@
 《我用爬虫一天时间“偷了”知乎一百万用户，只为证明PHP是世界上最好的语言 》所使用的程序
 原版地址：https://github.com/owner888/phpspider
 
+20180826 更新内容
+1、网址去重改为布隆去重算法
+2、升级后与原版任务不兼容，故版本号更改为 2.2.0
+3、调整部分默认参数为关闭状态
+4、合并原版：RESTful的bug修复，和$save_running_status的bug修复
+
 20180718 合并2.1.5的更新
 1、selector默认返回null，而不是false，因为isset(false)为true，解决了字段设置 required => true依然获取字段的bug
 2、添加了on_before_download_page回调，比如有时候需要根据某个特定URL，来决定是否使用代理或使用那个代理

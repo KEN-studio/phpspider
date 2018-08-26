@@ -29,6 +29,7 @@ use phpspider\core\queue;
 use phpspider\core\requests;
 use phpspider\core\selector;
 use phpspider\core\util;
+use phpspider\core\BloomFilter;
 
 // 启动的时候生成data目录
 util::path_exists(PATH_DATA);
@@ -53,7 +54,7 @@ class phpspider
     /**
      * 爬虫爬取每个网页的超时时间, 单位: 秒
      */
-    const TIMEOUT = 5;
+    const TIMEOUT = 35;
 
     /**
      * 爬取失败次数, 不想失败重新爬取则设置为0
@@ -215,14 +216,14 @@ class phpspider
     public static $duration = array();
 
     /**
-     * 【KEN】单域名允许抓取的最大时长，单位秒,0为不限制
+     * 【KEN】单域名允许响应时间超过3秒的时间总时长，单位秒,0为不限制 防止某些慢速域名占用过多采集时间
      */
-    public static $max_duration = 0;
+    public static $max_duration = 0; //建议值 1200 即20分钟
 
     /**
      * 【KEN】单域名最大子域名发现数量 防止掉进蜘蛛池，推荐值：3000（多数大型网站上限）
      */
-    public static $max_sub_num = 3000; //建议值 3000
+    public static $max_sub_num = 0; //建议值 3000
 
     /**
      * 【KEN】子进程未获取任务，超时退出前，等待计时器
@@ -238,7 +239,7 @@ class phpspider
     /**
      * 【KEN】每个主机并发上限，降低对方网站流量压力和减少被阻挡概率，建议值 6 ，须与 queue_order = rand 一起使用
      */
-    public static $max_task_per_host     = 0; //0值和非0值会使用不同类型的队列缓存库，从0改为非0值或从非0值改为0需清空队列缓存库再运行，否则任务无法添加
+    public static $max_task_per_host     = 0; //建议值 6，0值和非0值会使用不同类型的队列缓存库，从0改为非0值或从非0值改为0需清空队列缓存库再运行，否则任务无法添加
     public static $task_per_host_counter = array(); //计数容器
 
     /**
@@ -1137,6 +1138,7 @@ class phpspider
 
             queue::set_connect('default', self::$queue_config);
             queue::init();
+            BloomFilter::init();//加载布隆过滤器
 
             //退出前计时，等待1分钟，如果获取不到新任务，再退出
             self::$stand_by_time = 0;
@@ -1340,7 +1342,7 @@ class phpspider
 
         //记录速度较慢域名花费抓取时间 20180213
         $time_run = round(microtime(true) - $page_time_start);
-        if ($time_run > 1)
+        if ($time_run > 3)
         {
             $this->incr_duration_num($url, $time_run);
         }
@@ -2821,7 +2823,6 @@ class phpspider
 
         $url  = $link['url'];
         $link = $this->link_compress($link);
-
         $status = false;
         if (self::$use_redis)
         {
@@ -2831,7 +2832,7 @@ class phpspider
             if (queue::lock($lock))
             {
                 $exists = queue::exists($key);
-                // 不存在或者当然URL可重复入
+                // 不存在或者当前URL可重复入
                 if ( ! $exists || $allowed_repeat)
                 {
                     // 待爬取网页记录数加一
@@ -2894,7 +2895,7 @@ class phpspider
             if (queue::lock($lock))
             {
                 $exists = queue::exists($key);
-                // 不存在或者当然URL可重复入
+                // 不存在或者当前URL可重复入
                 if ( ! $exists || $allowed_repeat)
                 {
                     // 待爬取网页记录数加一

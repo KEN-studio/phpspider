@@ -9,7 +9,7 @@ use phpspider\core\requests;
 $configs = array(
     'name' => '马蜂窝',
     'tasknum' => 1,
-    //'save_running_state' => true,
+    'save_running_state' => true,
     'log_show' => true,
     'domains' => array(
         'www.mafengwo.cn'
@@ -28,6 +28,14 @@ $configs = array(
         //'type' => 'db', 
         //'table' => 'mafengwo_content',
     //),
+        'queue_config' => array(
+        'host'      => '127.0.0.1',
+       'port'      => 6379,
+        'pass'      => '',
+        'db'        => 1,
+        'prefix'    => 'phpspider',
+       'timeout'   => 30,
+   ),
     'fields' => array(
         // 标题
         array(

@@ -5,19 +5,19 @@
 原版地址：https://github.com/owner888/phpspider
 
 20180826 更新内容
-1.网址去重改为布隆去重算法
-2.升级后与原版任务不兼容，故版本号更改为 2.2.0
-3.调整部分默认参数为关闭状态
-4.合并原版：RESTful的bug修复，和$save_running_status的bug修复
+1. 网址去重改为布隆去重算法
+2. 升级后与原版任务不兼容，故版本号更改为 2.2.0
+3. 调整部分默认参数为关闭状态
+4. 合并原版：RESTful的bug修复，和$save_running_status的bug修复
 
 20180718 合并2.1.5的更新
-1.selector默认返回null，而不是false，因为isset(false)为true，解决了字段设置 required => true依然获取字段的bug
-2.添加了on_before_download_page回调，比如有时候需要根据某个特定URL，来决定是否使用代理或使用那个代理
-3.修复db类处理事务的bug
-4.采集一个URL时先删除上一个URL的代理和伪造IP，以免被自动带上代理
-5.添加请求页面语言
-6.requests类默认把采集到的内容转utf-8，因为xpath需要utf-8支持
-7.修复a标签相对路径错误的bug（这是本分支的fill_url Plan A，本分支采取的Plan B方案，等对比测试一下再决定用哪套方案）
+1. selector默认返回null，而不是false，因为isset(false)为true，解决了字段设置 required => true依然获取字段的bug
+2. 添加了on_before_download_page回调，比如有时候需要根据某个特定URL，来决定是否使用代理或使用那个代理
+3. 修复db类处理事务的bug
+4. 采集一个URL时先删除上一个URL的代理和伪造IP，以免被自动带上代理
+5. 添加请求页面语言
+6. requests类默认把采集到的内容转utf-8，因为xpath需要utf-8支持
+7. 修复a标签相对路径错误的bug（这是本分支的fill_url Plan A，本分支采取的Plan B方案，等对比测试一下再决定用哪套方案）
 
 本修改版改动如下：
 20180530 更新

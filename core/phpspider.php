@@ -23,13 +23,13 @@ namespace phpspider\core;
 require_once __DIR__.'/constants.php';
 
 use Exception;
+use phpspider\core\BloomFilter;
 use phpspider\core\db;
 use phpspider\core\log;
 use phpspider\core\queue;
 use phpspider\core\requests;
 use phpspider\core\selector;
 use phpspider\core\util;
-use phpspider\core\BloomFilter;
 
 // 启动的时候生成data目录
 util::path_exists(PATH_DATA);
@@ -267,6 +267,8 @@ class phpspider
     public static $db_config = array();
     // 队列配置
     public static $queue_config = array();
+    //布隆过滤器redis配置
+    public static $bloom_config = array();
 
     // 运行面板参数长度
     public static $server_length  = 10;
@@ -439,6 +441,7 @@ class phpspider
         self::$export_table = isset($configs['export']['table']) ? $configs['export']['table'] : '';
         self::$db_config    = isset($configs['db_config']) ? $configs['db_config'] : array();
         self::$queue_config = isset($configs['queue_config']) ? $configs['queue_config'] : array();
+        self::$bloom_config = isset($configs['bloom_config']) ? $configs['bloom_config'] : self::$queue_config;
 
         // 是否设置了并发任务数, 并且大于1, 而且不是windows环境
         if (isset($configs['tasknum']) && $configs['tasknum'] > 1 && ! util::is_win())
@@ -971,7 +974,8 @@ class phpspider
             self::$use_redis = true;
 
             queue::set_connect('default', self::$queue_config);
-            if ( ! queue::init())
+            BloomFilter::set_connect('default', self::$bloom_config);
+            if ( ! queue::init() or ! BloomFilter::init())
             {
                 if (self::$multiserver)
                 {
@@ -1136,9 +1140,12 @@ class phpspider
             self::$collect_succ = 0;
             self::$collect_fail = 0;
 
+            //初始化布隆
+            BloomFilter::set_connect('default', self::$bloom_config);
+            BloomFilter::init();
+
             queue::set_connect('default', self::$queue_config);
             queue::init();
-            BloomFilter::init();//加载布隆过滤器
 
             //退出前计时，等待1分钟，如果获取不到新任务，再退出
             self::$stand_by_time = 0;
@@ -1776,7 +1783,7 @@ class phpspider
         {
             $url       = $this->uri2url($url, $collect_url);
             $parse_url = @parse_url($url);
-            $domain    = empty($parse_url['host']) ? $domain : $parse_url['host'];
+            $domain    =  ! empty($parse_url['host']) ? '' : $parse_url['host'];
             // 如果host不为空, 判断是不是要爬取的域名
             if ( ! empty($parse_url['host']))
             {
@@ -2821,8 +2828,8 @@ class phpspider
             return false;
         }
 
-        $url  = $link['url'];
-        $link = $this->link_compress($link);
+        $url    = $link['url'];
+        $link   = $this->link_compress($link);
         $status = false;
         if (self::$use_redis)
         {
@@ -2831,18 +2838,25 @@ class phpspider
             // 加锁: 一个进程一个进程轮流处理
             if (queue::lock($lock))
             {
-                $exists = queue::exists($key);
+                //清除url中的#号
+                if (strpos($url, '#'))
+                {
+                    $url = preg_replace('/#.*/iu', '', $url);
+                }
+                //$exists = queue::exists($key);
+                //改用布隆过滤器 20180826
+                $exists = BloomFilter::add($url);
                 // 不存在或者当前URL可重复入
                 if ( ! $exists || $allowed_repeat)
                 {
                     // 待爬取网页记录数加一
                     queue::incr('collect_urls_num');
                     // 先标记为待爬取网页
-                    queue::set($key, time());
+                    //queue::set($key, time());//改为布隆过滤后，不再需要此值
                     // 入队列
                     $link = json_encode($link);
                     //根据采集设置为顺序采集还是随机采集，使用列表或集合对象 2018-5 BY KEN <a-site@foxmail.com>
-                    if (self::$configs['queue_order'] == 'rand')
+                    if (self::$configs['queue_order'] === 'rand')
                     {
                         queue::sadd('collect_queue', $link);
                     }
@@ -2894,18 +2908,25 @@ class phpspider
             // 加锁: 一个进程一个进程轮流处理
             if (queue::lock($lock))
             {
-                $exists = queue::exists($key);
+                //清除url中的#号
+                if (strpos($url, '#'))
+                {
+                    $url = preg_replace('/#.*/iu', '', $url);
+                }
+                //$exists = queue::exists($key);
+                //改用布隆过滤器 20180826
+                $exists = BloomFilter::add($url);
                 // 不存在或者当前URL可重复入
                 if ( ! $exists || $allowed_repeat)
                 {
                     // 待爬取网页记录数加一
                     queue::incr('collect_urls_num');
                     // 先标记为待爬取网页
-                    queue::set($key, time());
+                    //queue::set($key, time());//改为布隆过滤后，不再需要此值
                     // 入队列
                     $link = json_encode($link);
                     //根据采集设置为顺序采集还是随机采集，使用列表或集合对象 2018-5 BY KEN <a-site@foxmail.com>
-                    if (self::$configs['queue_order'] == 'rand')
+                    if (self::$configs['queue_order'] === 'rand')
                     {
                         queue::sadd('collect_queue', $link); //无序集合
                     }
@@ -2948,7 +2969,7 @@ class phpspider
         if (self::$use_redis)
         {
             //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
-            if (self::$configs['queue_order'] == 'rand')
+            if (self::$configs['queue_order'] === 'rand')
             {
                 $link = queue::spop('collect_queue');
             }
@@ -2977,7 +2998,7 @@ class phpspider
         if (self::$use_redis)
         {
             //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
-            if (self::$configs['queue_order'] == 'rand')
+            if (self::$configs['queue_order'] === 'rand')
             {
                 $link = queue::spop('collect_queue');
             }
@@ -3006,7 +3027,7 @@ class phpspider
         if (self::$use_redis)
         {
             //根据采集设置为顺序采集还是随机采集，使用列表或集合对象
-            if (self::$configs['queue_order'] == 'rand')
+            if (self::$configs['queue_order'] === 'rand')
             {
                 $lsize = queue::scard('collect_queue');
             }
@@ -3674,13 +3695,15 @@ class phpspider
             {
                 $host = md5($host);
             }
-            $hostkey = 'sub_d-'.$host;
-            $exists  = queue::exists($hostkey);
+            //$hostkey = 'sub_d-'.$host;//改为布隆过滤后，不再需要此值
+            //$exists  = queue::exists($hostkey);
+            //改用布隆过滤器 20180826
+            $exists = BloomFilter::add($host);
             if ( ! $exists)
             {
                 // 子域名数量加一
                 $count = queue::incr($domain);
-                queue::set($hostkey, 1);
+                //queue::set($hostkey, 1);//改为布隆过滤后，不再需要此值
             }
         }
         return $count;

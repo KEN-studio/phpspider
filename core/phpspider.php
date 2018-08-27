@@ -1321,7 +1321,7 @@ class phpspider
             {
                 log::warn('Task('.self::$taskid.') task_per_host = '.$task_per_host.' > '.self::$configs['max_task_per_host'].' ; URL: '.$url.' will be retry later...');
                 $this->queue_lpush($link); //放回队列
-                usleep(100000);
+                usleep(10000);
                 return false;
             }
         }

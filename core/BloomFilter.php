@@ -156,19 +156,15 @@ class BloomFilter
         //}
     }
 
-    public static function add($e)
+    public static function add($url)
     {
         self::init();
-        $e = (string) $e;
-        if (empty(self::$links[self::$link_name]))
-        {
-            throw new Exception('You not set a redis connect!');
-        }
+        $url = (string) $url;
 
         //self::$links[self::$link_name]->multi(Redis::PIPELINE); //多条命令按照先后顺序被放进一个队列当中，最后由 EXEC 命令原子性(atomic)地顺序执行
         self::$links[self::$link_name]->pipeline(); //多条命令按照先后顺序被放进一个队列当中，并同时执行，不需要原子性地顺序执行
         $irs          = array();
-        $mt_rand_seed = sprintf('%u', crc32($e));
+        $mt_rand_seed = sprintf('%u', crc32($url));
         if ($mt_rand_seed > PHP_INT_MAX)
         {
             $mt_rand_seed = $mt_rand_seed % PHP_INT_MAX;
@@ -180,16 +176,16 @@ class BloomFilter
             //生成布隆条位置
             if ($i === 0)
             {
-                $hash = sprintf('%u', crc32(md5($e))) % self::$m;
+                $hash = sprintf('%u', crc32(md5($url))) % self::$m;
             }
             elseif ($i === 1)
             {
-                $hash = sprintf('%u', crc32(sha1($e))) % self::$m;
+                $hash = sprintf('%u', crc32(sha1($url))) % self::$m;
             }
             else
             {
                 //$seed       = self::getBKDRHashSeed($i); //随机数种子
-                //$hash       = self::BKDRHash($e, $seed); //Hash数字
+                //$hash       = self::BKDRHash($url, $seed); //Hash数字
                 $hash = mt_rand(1, self::$m - 1); //使用 crc32为随机数种子的随机数
             }
 
@@ -214,28 +210,31 @@ class BloomFilter
             //}
             self::$links[self::$link_name]->setbit($key, $offset, 1); //将指定偏移位置设置为1
         }
-        //only for log
-        //$t1   = microtime(true);
-        $rt   = self::$links[self::$link_name]->exec();
-        //$t2   = microtime(true);
-        //$cost = round(($t2 - $t1) * 1000, 3).'ms';
-        //偏移位置已经为1的个数
-        $c = array_sum($rt);
 
-        //only for log
-        $exists = 'not exists';
-        if ($c === self::$k)
+        //开始插入数据 不成功则延迟10ms
+        try
         {
-            $exists = 'exists';
+            if (self::$links[self::$link_name])
+            {
+                $rt = self::$links[self::$link_name]->exec();
+                //偏移位置已经为1的个数
+                $c = array_sum($rt);
+                return $c === self::$k;
+            }
         }
-        //$msg = ('['.date('Y-m-d H:i:s', time()).'] DEBUG: redis['.$ir.']-time-spent='.$cost.' maxOffset-of-'.$ir.'|'.$key.'='.self::$maxOffs[$ir.'|'.$key].' entry='.$e.' '.$exists.' c='.$c).' nPartitions='.self::$nPartitions.' partitionSize='.self::$partitionSize.' Max_mem='.round((self::$nPartitions * (self::$partitionSize) / 8 / 1024 / 1024), 2).'M, Current_mem= '.round(array_sum(self::$maxOffs) / 8 / 1024 / 1024, 2).'M'.PHP_EOL;
-        //sort($irs);
-        $msg = 'entry='.$e.' '.$exists.' c='.$c.'/'.self::$k.PHP_EOL;
-        //echo $msg;
-        log::error($msg);
-
-        //如果所有偏移位置均为1，则表示此内容为重复
-        return $c === self::$k;
+        catch (Exception $e)
+        {
+            $msg = "PHP Fatal error:  Uncaught exception 'RedisException' with message '".$e->getMessage()."'\n";
+            log::warn($msg);
+            if ($e->getCode() == 0)
+            {
+                self::$links[self::$link_name]->close();
+                self::$links[self::$link_name] = null;
+                usleep(10000);//延迟10ms
+                return self::add($url);
+            }
+        }
+        return false;
     }
 
     //清除去重库

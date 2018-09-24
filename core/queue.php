@@ -190,7 +190,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::set($key, $value, $expire);
             }
         }
@@ -237,7 +237,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::setnx($key, $value, $expire);
             }
         }
@@ -293,7 +293,7 @@ class queue
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
                 // 睡眠10毫秒
-                usleep(10000);
+                usleep(30000);
                 return self::lock($name, $value, $expire, $interval);
             }
         }
@@ -332,7 +332,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::get($key);
             }
         }
@@ -365,7 +365,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::del($key);
             }
         }
@@ -409,7 +409,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::type($key);
             }
         }
@@ -450,7 +450,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::incr($key, $integer);
             }
         }
@@ -491,7 +491,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::decr($key, $integer);
             }
         }
@@ -525,7 +525,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::append($key, $value);
             }
         }
@@ -560,7 +560,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::substr($key, $start, $end);
             }
         }
@@ -593,7 +593,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::select($index);
             }
         }
@@ -626,7 +626,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::dbsize();
             }
         }
@@ -658,7 +658,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::flushdb();
             }
         }
@@ -690,7 +690,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::flushall();
             }
         }
@@ -730,7 +730,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::save($is_bgsave);
             }
         }
@@ -762,7 +762,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::info();
             }
         }
@@ -801,7 +801,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::slowlog($command, $len);
             }
         }
@@ -833,7 +833,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::lastsave();
             }
         }
@@ -867,7 +867,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::lpush($key, $value);
             }
         }
@@ -901,7 +901,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::rpush($key, $value);
             }
         }
@@ -934,7 +934,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::lpop($key);
             }
         }
@@ -967,7 +967,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::rpop($key);
             }
         }
@@ -1000,7 +1000,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::lsize($key);
             }
         }
@@ -1034,7 +1034,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::lget($key, $index);
             }
         }
@@ -1069,7 +1069,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::lrange($key, $start, $end);
             }
         }
@@ -1145,7 +1145,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::keys($key);
             }
         }
@@ -1180,7 +1180,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::ttl($key);
             }
         }
@@ -1214,7 +1214,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::expire($key, $expire);
             }
         }
@@ -1247,7 +1247,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::exists($key);
             }
         }
@@ -1311,7 +1311,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::sadd($key, $value);
             }
         }
@@ -1344,7 +1344,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::spop($key);
             }
         }
@@ -1377,7 +1377,7 @@ class queue
             {
                 self::$links[self::$link_name]->close();
                 self::$links[self::$link_name] = null;
-                usleep(10000);
+                usleep(30000);
                 return self::scard($key);
             }
         }

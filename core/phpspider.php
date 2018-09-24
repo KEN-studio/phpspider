@@ -1068,6 +1068,7 @@ class phpspider
 
         // 多任务和分布式都要清掉, 当然分布式只清自己的
         $this->init_redis();
+        $this->clean_task_per_host(); //重置并发计数 20180901
 
         //--------------------------------------------------------------------------------
         // 生成多任务
@@ -1321,7 +1322,7 @@ class phpspider
             {
                 log::warn('Task('.self::$taskid.') task_per_host = '.$task_per_host.' > '.self::$configs['max_task_per_host'].' ; URL: '.$url.' will be retry later...');
                 $this->queue_lpush($link); //放回队列
-                usleep(10000);
+                usleep(100000);
                 return false;
             }
         }
@@ -3234,6 +3235,23 @@ class phpspider
             $duration[$domain] =  ! empty(self::$duration[$domain]) ? self::$duration[$domain] : 0;
         }
         return $duration[$domain] ? $duration[$domain] : 0;
+    }
+
+    /**
+     * 重置全部 单 host 当前并发计数（如异常中断时导致计数不可重置）
+     * @return boolean
+     * @author KEN <a-site@foxmail.com>
+     * @created time :2018-09-1
+     */
+    public function clean_task_per_host()
+    {
+        if ($keys = queue::keys('task_per_host:*'))
+        {
+            foreach ($keys as $key)
+            {
+                $rs = queue::set($key, 0);
+            }
+        }
     }
 
     /**
